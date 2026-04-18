@@ -66,6 +66,15 @@ export function GraphCanvas() {
     }
   }, [setNodes, setEdges])
 
+  // Adjust initial zoom level after ReactFlow initializes
+  useEffect(() => {
+    if (reactFlowInstance) {
+      // Zoom out by 3 scroll units (each unit is roughly 0.25 zoom)
+      const zoomOutFactor = 0.75
+      reactFlowInstance.setCenter(0, 0, { zoom: zoomOutFactor, duration: 0 })
+    }
+  }, [reactFlowInstance])
+
   // Auto-save to localStorage
   useEffect(() => {
     if (nodes.length > 0 || edges.length > 0) {
@@ -284,7 +293,6 @@ export function GraphCanvas() {
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
-        fitView
         className="bg-background"
         proOptions={{ hideAttribution: true }}
       >

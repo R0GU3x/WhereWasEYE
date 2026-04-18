@@ -12,11 +12,11 @@ Visualize your attack paths, track compromise status, add notes, and export your
 ## ✨ Features
 - **Interactive Graph Editor**: Add nodes, connect them by dragging, and build complex attack graphs
 - **Right-click Context Menu**: Quickly add nodes, edit, delete, or change status
-- **Node Status System**: Track progress with colors (Not Started, In Progress, Compromised, Failed)
+- **Node Status System**: Track progress
 - **Detailed Node Information**: Add titles, descriptions, commands, and references
 - **Import / Export**: Save and load your graphs as JSON files
 - **Modern & Responsive UI**: Built with Next.js 15 and Tailwind CSS
-- **Keyboard Shortcuts** support
+- **Keyboard Shortcuts** supported
 <br>
 
 ![WhereWasEYE Preview](https://github.com/R0GU3x/WhereWasEYE/blob/master/public/preview.png)

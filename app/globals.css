@@ -134,16 +134,20 @@
   }
 }
 
-/* Floating animation for nodes */
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
+/* Make all text unselectable except in input boxes */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
-.animate-float {
-  animation: float 3s ease-in-out infinite;
+input,
+textarea,
+[contenteditable="true"],
+.react-flow__handle {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
 }

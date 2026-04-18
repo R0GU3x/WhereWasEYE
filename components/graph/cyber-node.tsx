@@ -34,13 +34,10 @@ function CyberNodeComponent({ data, selected }: NodeProps) {
   return (
     <div
       className={cn(
-        "min-w-[140px] rounded-lg border-2 px-4 py-3 transition-all duration-200 animate-float",
+        "min-w-[140px] rounded-lg border-2 px-4 py-3 transition-all duration-200",
         statusStyles[nodeData.status],
         selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
       )}
-      style={{
-        animationDelay: `${Math.random() * 2}s`,
-      }}
     >
       <Handle
         type="target"

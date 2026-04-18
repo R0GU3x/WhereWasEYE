@@ -4,7 +4,7 @@ An interactive, real-time attack graph / cyber kill chain visualizer built for r
 
 Visualize your attack paths, track compromise status, add notes, and export your graphs — all in a clean and intuitive interface.
 
-![WhereWasEYE Preview](https://github.com/R0GU3x/WhereWasEYE/blob/main/public/preview.png)
+![WhereWasEYE Preview](https://github.com/R0GU3x/WhereWasEYE/blob/master/public/preview.png)
 
 ## ✨ Features
 

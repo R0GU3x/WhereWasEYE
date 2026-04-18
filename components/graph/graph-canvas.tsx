@@ -310,7 +310,7 @@ export function GraphCanvas() {
       </ReactFlow>
 
       {/* Help Button - Hidden by default */}
-      {showHelpButton && (
+      {showHelp && (
         <div className="absolute bottom-4 left-4 z-10">
           <button
             onClick={() => setShowHelp(!showHelp)}

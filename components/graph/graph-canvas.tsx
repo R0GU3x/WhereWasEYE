@@ -309,48 +309,50 @@ export function GraphCanvas() {
         
       </ReactFlow>
 
-      {/* Help Button */}
-      <div className="absolute bottom-4 left-4 z-10">
-        <button
-          onClick={() => setShowHelp(!showHelp)}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur-sm transition-all duration-300 hover:bg-muted hover:text-foreground"
-        >
-          {showHelp ? <X size={18} /> : <CircleHelp size={18} />}
-        </button>
-        
-        {/* Help Popup */}
-        <div
-          className={`absolute bottom-14 left-0 w-72 origin-bottom-left rounded-lg border border-border bg-card/95 p-4 backdrop-blur-md transition-all duration-300 ease-out ${
-            showHelp
-              ? "scale-100 opacity-100 translate-y-0"
-              : "scale-95 opacity-0 translate-y-2 pointer-events-none"
-          }`}
-        >
-          <h4 className="mb-3 font-mono text-sm font-semibold text-foreground">Quick Guide</h4>
-          <ul className="space-y-2 font-mono text-xs text-muted-foreground">
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Right-click on canvas to add a new node</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Right-click on a node for options (add child, set status, delete)</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Left-click a node to view and edit details</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Drag from bottom handle to top handle to connect nodes</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Press Delete key to remove selected node</span>
-            </li>
-          </ul>
+      {/* Help Button - Hidden by default */}
+      {showHelpButton && (
+        <div className="absolute bottom-4 left-4 z-10">
+          <button
+            onClick={() => setShowHelp(!showHelp)}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur-sm transition-all duration-300 hover:bg-muted hover:text-foreground"
+          >
+            {showHelp ? <X size={18} /> : <CircleHelp size={18} />}
+          </button>
+          
+          {/* Help Popup */}
+          <div
+            className={`absolute bottom-14 left-0 w-72 origin-bottom-left rounded-lg border border-border bg-card/95 p-4 backdrop-blur-md transition-all duration-300 ease-out ${
+              showHelp
+                ? "scale-100 opacity-100 translate-y-0"
+                : "scale-95 opacity-0 translate-y-2 pointer-events-none"
+            }`}
+          >
+            <h4 className="mb-3 font-mono text-sm font-semibold text-foreground">Quick Guide</h4>
+            <ul className="space-y-2 font-mono text-xs text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                <span>Right-click on canvas to add a new node</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                <span>Right-click on a node for options (add child, set status, delete)</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                <span>Left-click a node to view and edit details</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                <span>Drag from bottom handle to top handle to connect nodes</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                <span>Press Delete key to remove selected node</span>
+              </li>
+            </ul>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Minimap Container */}
       <div className="absolute right-4 top-4 z-20">

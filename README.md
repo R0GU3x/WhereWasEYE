@@ -1,13 +1,15 @@
-# WhereWasEYE - Cyber Attack Graph Visualizer
+# WhereWasEYE [WWE] - Cyber Attack Graph Visualizer
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/R0GU3x/WhereWasEYE/master/public/icon.png" width="300" />
+</p>
 
 An interactive, real-time attack graph / cyber kill chain visualizer built for red teamers, blue teamers, and security professionals.
-
 Visualize your attack paths, track compromise status, add notes, and export your graphs — all in a clean and intuitive interface.
 
-![WhereWasEYE Preview](https://github.com/R0GU3x/WhereWasEYE/blob/master/public/preview.png)
+<br>
 
 ## ✨ Features
-
 - **Interactive Graph Editor**: Add nodes, connect them by dragging, and build complex attack graphs
 - **Right-click Context Menu**: Quickly add nodes, edit, delete, or change status
 - **Node Status System**: Track progress with colors (Not Started, In Progress, Compromised, Failed)
@@ -15,13 +17,18 @@ Visualize your attack paths, track compromise status, add notes, and export your
 - **Import / Export**: Save and load your graphs as JSON files
 - **Modern & Responsive UI**: Built with Next.js 15 and Tailwind CSS
 - **Keyboard Shortcuts** support
+<br>
+
+![WhereWasEYE Preview](https://github.com/R0GU3x/WhereWasEYE/blob/master/public/preview.png)
+
+<br>
 
 ## 🚀 Live Demo
+Click [here](https://wherewaseye.vercel.app) to visit the website right away
 
-Visit: Click [here](https://wherewaseye.vercel.app) to visit the website right away
+<br>
 
 ## 🛠️ Local Installation
-
 Follow these steps to run **WhereWasEYE** on your local machine:
 
 1. Install Node.js 
@@ -47,7 +54,9 @@ Follow these steps to run **WhereWasEYE** on your local machine:
     pnpm dev
     ```
 
-6.Open Browser and visit: http://localhost:3000
+6. Open Browser and visit: http://localhost:3000
+
+<br>
 
 ## 🛠️ Tech Stack
 

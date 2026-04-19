@@ -50,8 +50,8 @@ export function GraphCanvas() {
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set())
   const [showHelp, setShowHelp] = useState(false)
   const [minimapExpanded, setMinimapExpanded] = useState(true)
-  const [isPanning, setIsPanning] = useState(false)
-  const [isSelecting, setIsSelecting] = useState(false)
+  const [isSelectMode, setIsSelectMode] = useState(false) // Spacebar toggles selection mode
+  const [isDrawingSelectBox, setIsDrawingSelectBox] = useState(false)
   const [selectStart, setSelectStart] = useState<{ x: number; y: number } | null>(null)
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [bulkDeleteModal, setBulkDeleteModal] = useState(false)
@@ -300,6 +300,14 @@ export function GraphCanvas() {
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (event, node) => {
+      // Selection only works in select mode (spacebar held)
+      if (!isSelectMode) {
+        // In pan mode, just open detail panel for the node
+        setSelectedNode(node as Node<CyberNodeData>)
+        setSelectedNodes(new Set())
+        return
+      }
+
       if ((event.ctrlKey || event.metaKey)) {
         // Ctrl/Cmd + click to add/remove from selection
         setSelectedNodes((prev) => {
@@ -317,12 +325,12 @@ export function GraphCanvas() {
         })
         setSelectedNode(null)
       } else {
-        // Single select - clear multi-selection and select this node
+        // Single select in select mode
         setSelectedNode(node as Node<CyberNodeData>)
         setSelectedNodes(new Set())
       }
     },
-    [selectedNode]
+    [selectedNode, isSelectMode]
   )
 
   const onNodeDoubleClick: NodeMouseHandler = useCallback(
@@ -340,21 +348,23 @@ export function GraphCanvas() {
     setContextMenu(null)
   }, [])
 
-  // Handle pane mouse down for drag-to-select
+  // Handle pane mouse down for drag-to-select (only in selection mode with Ctrl)
   const handlePaneMouseDown = useCallback((e: React.MouseEvent) => {
-    if (isPanning || e.button !== 0) return // Only left click
-    if ((e.target as HTMLElement).closest('.react-flow__node')) return // Don't select if clicking a node
+    // Selection box only activates in select mode + Ctrl/Cmd key
+    if (!isSelectMode || e.button !== 0) return
+    if (!(e.ctrlKey || e.metaKey)) return // Require Ctrl for drag selection
+    if ((e.target as HTMLElement).closest('.react-flow__node')) return
 
     const rect = reactFlowWrapper.current?.getBoundingClientRect()
     if (!rect) return
 
     setSelectStart({ x: e.clientX - rect.left, y: e.clientY - rect.top })
-    setIsSelecting(true)
-  }, [isPanning])
+    setIsDrawingSelectBox(true)
+  }, [isSelectMode])
 
   // Handle pane mouse move for drag-to-select box
   const handlePaneMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isSelecting || !selectStart) return
+    if (!isDrawingSelectBox || !selectStart) return
 
     const rect = reactFlowWrapper.current?.getBoundingClientRect()
     if (!rect) return
@@ -370,12 +380,12 @@ export function GraphCanvas() {
       width: Math.abs(width),
       height: Math.abs(height),
     })
-  }, [isSelecting, selectStart])
+  }, [isDrawingSelectBox, selectStart])
 
   // Handle pane mouse up to finalize selection
   const handlePaneMouseUp = useCallback((e: MouseEvent | React.MouseEvent) => {
-    if (!isSelecting || !selectBox || !reactFlowInstance) {
-      setIsSelecting(false)
+    if (!isDrawingSelectBox || !selectBox || !reactFlowInstance) {
+      setIsDrawingSelectBox(false)
       setSelectBox(null)
       setSelectStart(null)
       return
@@ -383,7 +393,7 @@ export function GraphCanvas() {
 
     // Check if drag was more than just a click (threshold of 5px)
     if (selectBox.width < 5 && selectBox.height < 5) {
-      setIsSelecting(false)
+      setIsDrawingSelectBox(false)
       setSelectBox(null)
       setSelectStart(null)
       return
@@ -391,7 +401,7 @@ export function GraphCanvas() {
 
     const rect = reactFlowWrapper.current?.getBoundingClientRect()
     if (!rect) {
-      setIsSelecting(false)
+      setIsDrawingSelectBox(false)
       setSelectBox(null)
       setSelectStart(null)
       return
@@ -437,22 +447,20 @@ export function GraphCanvas() {
       )
     }).map((n) => n.id)
 
-    // Ctrl/Cmd key adds to existing selection
-    if ((e.ctrlKey || e.metaKey) && selectedNodeIds.length > 0) {
+    // Add to existing selection (Ctrl+drag always adds)
+    if (selectedNodeIds.length > 0) {
       setSelectedNodes((prev) => {
         const newSet = new Set(prev)
         selectedNodeIds.forEach((id) => newSet.add(id))
         return newSet
       })
-    } else if (selectedNodeIds.length > 0) {
-      setSelectedNodes(new Set(selectedNodeIds))
     }
     
     setSelectedNode(null)
-    setIsSelecting(false)
+    setIsDrawingSelectBox(false)
     setSelectBox(null)
     setSelectStart(null)
-  }, [isSelecting, selectBox, nodes, reactFlowInstance])
+  }, [isDrawingSelectBox, selectBox, nodes, reactFlowInstance])
 
   // Custom scroll and zoom handler
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -506,23 +514,25 @@ export function GraphCanvas() {
       // Delete for selected nodes (only if not in input) - show confirmation
       if (e.key === "Delete" && !isInput) {
         if (selectedNodes.size > 0) {
-          // Show bulk delete confirmation modal
           setBulkDeleteModal(true)
         } else if (selectedNode) {
-          // Show single delete confirmation
           requestDeleteNode(selectedNode.id)
         }
       }
-      // Spacebar for pan mode (only if not in input)
-      if (e.code === "Space" && !isPanning && !isInput) {
+      // Spacebar toggles to selection mode (default is pan mode)
+      if (e.code === "Space" && !isSelectMode && !isInput) {
         e.preventDefault()
-        setIsPanning(true)
+        setIsSelectMode(true)
       }
     }
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") {
-        setIsPanning(false)
+        setIsSelectMode(false)
+        // Clear any ongoing selection box when exiting select mode
+        setIsDrawingSelectBox(false)
+        setSelectBox(null)
+        setSelectStart(null)
       }
     }
 
@@ -532,7 +542,7 @@ export function GraphCanvas() {
       document.removeEventListener("keydown", handleKeyDown)
       document.removeEventListener("keyup", handleKeyUp)
     }
-  }, [selectedNode, selectedNodes, requestDeleteNode, isPanning])
+  }, [selectedNode, selectedNodes, requestDeleteNode, isSelectMode])
 
   // Export function
   const handleExport = useCallback(() => {
@@ -604,7 +614,7 @@ export function GraphCanvas() {
          onMouseMove={handlePaneMouseMove}
          onMouseUp={handlePaneMouseUp}
          onWheel={handleWheel}
-         style={{ cursor: isPanning ? 'grab' : 'default' }}>
+         style={{ cursor: isSelectMode ? 'crosshair' : 'grab' }}>
       {/* Drag-to-select box */}
       {selectBox && (
         <div
@@ -636,9 +646,12 @@ export function GraphCanvas() {
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
+        panOnDrag={!isSelectMode}
         selectionOnDrag={false}
-        selectionMode={undefined}
         selectNodesOnDrag={false}
+        zoomOnScroll={false}
+        zoomOnPinch={true}
+        zoomOnDoubleClick={false}
         className="bg-background [&_.react-flow__nodesselection-rect]:!hidden [&_.react-flow__selection]:!hidden"
         proOptions={{ hideAttribution: true }}
       >
@@ -684,35 +697,39 @@ export function GraphCanvas() {
           <ul className="space-y-2 font-mono text-xs text-muted-foreground">
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Right-click on canvas to add a new node</span>
+              <span><strong>Drag canvas</strong> to pan (default hand mode)</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Right-click on a node for options (add child, set status, delete)</span>
+              <span><strong>Hold Space</strong> to enter selection mode</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Left-click a node to view and edit details</span>
+              <span><strong>Space + Click</strong> to select a node</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Ctrl+click to multi-select nodes</span>
+              <span><strong>Space + Ctrl + Click</strong> to multi-select</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Drag to draw selection box around nodes</span>
+              <span><strong>Space + Ctrl + Drag</strong> to draw selection box</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Hold Space and drag to pan the canvas</span>
+              <span><strong>Right-click</strong> for context menu options</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Scroll: up-down, Shift+scroll: left-right, Ctrl+scroll: zoom</span>
+              <span><strong>Scroll:</strong> up/down, <strong>Shift+Scroll:</strong> left/right</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Press Delete key to remove selected nodes</span>
+              <span><strong>Ctrl+Scroll:</strong> zoom in/out at cursor</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span><strong>Delete key:</strong> remove selected nodes</span>
             </li>
           </ul>
         </div>

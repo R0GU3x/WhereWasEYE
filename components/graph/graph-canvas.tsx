@@ -56,6 +56,8 @@ export function GraphCanvas() {
   const [selectStart, setSelectStart] = useState<{ x: number; y: number } | null>(null)
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [history, setHistory] = useState<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
+  const [bulkStatusModal, setBulkStatusModal] = useState<NodeStatus | null>(null)
+  const [bulkDeleteModal, setBulkDeleteModal] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
 
@@ -487,6 +489,35 @@ export function GraphCanvas() {
     input.click()
   }, [setNodes, setEdges])
 
+  // Bulk status update
+  const handleBulkStatusUpdate = useCallback(
+    (status: NodeStatus) => {
+      const updatedNodes = nodes.map((node) =>
+        selectedNodes.has(node.id)
+          ? { ...node, data: { ...node.data, status } }
+          : node
+      )
+      setNodes(updatedNodes)
+      saveToHistory(updatedNodes, edges)
+      setBulkStatusModal(null)
+      setSelectedNodes(new Set())
+    },
+    [nodes, edges, selectedNodes, setNodes, saveToHistory]
+  )
+
+  // Bulk delete with confirmation
+  const handleBulkDelete = useCallback(() => {
+    const newNodes = nodes.filter((n) => !selectedNodes.has(n.id))
+    const newEdges = edges.filter(
+      (e) => !selectedNodes.has(e.source) && !selectedNodes.has(e.target)
+    )
+    setNodes(newNodes)
+    setEdges(newEdges)
+    saveToHistory(newNodes, newEdges)
+    setBulkDeleteModal(false)
+    setSelectedNodes(new Set())
+  }, [nodes, edges, selectedNodes, setNodes, setEdges, saveToHistory])
+
   return (
     <div ref={reactFlowWrapper} className="relative h-screen w-screen" 
          onMouseDown={handlePaneMouseDown}
@@ -604,6 +635,45 @@ export function GraphCanvas() {
           </ul>
         </div>
       </div>
+
+      {/* Bulk Operations Toolbar */}
+      {selectedNodes.size > 0 && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-card/95 border border-border rounded-lg p-3 backdrop-blur-sm flex items-center gap-2">
+          <span className="font-mono text-sm text-muted-foreground">{selectedNodes.size} selected</span>
+          <div className="h-4 w-px bg-border" />
+          <button
+            onClick={() => handleBulkStatusUpdate("in-progress")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-in-progress)]/10 text-[var(--node-in-progress)] hover:bg-[var(--node-in-progress)]/20 transition-colors"
+          >
+            In Progress
+          </button>
+          <button
+            onClick={() => handleBulkStatusUpdate("paused")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-paused)]/10 text-[var(--node-paused)] hover:bg-[var(--node-paused)]/20 transition-colors"
+          >
+            Paused
+          </button>
+          <button
+            onClick={() => handleBulkStatusUpdate("success")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-success)]/10 text-[var(--node-success)] hover:bg-[var(--node-success)]/20 transition-colors"
+          >
+            Success
+          </button>
+          <button
+            onClick={() => handleBulkStatusUpdate("failed")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-failed)]/10 text-[var(--node-failed)] hover:bg-[var(--node-failed)]/20 transition-colors"
+          >
+            Failed
+          </button>
+          <div className="h-4 w-px bg-border" />
+          <button
+            onClick={() => setBulkDeleteModal(true)}
+            className="rounded px-3 py-1 text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+          >
+            Delete
+          </button>
+        </div>
+      )}
 
       {/* Minimap Container */}
       <div className="absolute right-4 top-4 z-20">
@@ -756,6 +826,30 @@ export function GraphCanvas() {
           onClose={() => setSelectedNode(null)}
           onUpdateNode={handleUpdateNode}
         />
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {bulkDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4">
+            <h3 className="mb-2 text-lg font-semibold text-foreground">Delete {selectedNodes.size} Node{selectedNodes.size !== 1 ? 's' : ''}?</h3>
+            <p className="mb-6 text-sm text-muted-foreground">This action cannot be undone. All connected edges will also be removed.</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setBulkDeleteModal(false)}
+                className="rounded px-4 py-2 font-medium text-foreground border border-border hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="rounded px-4 py-2 font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+              >
+                Delete All
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

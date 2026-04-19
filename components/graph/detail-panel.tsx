@@ -35,23 +35,15 @@ function parseMarkdown(text: string) {
     } else if (line.startsWith('# ')) {
       elements.push({ type: 'h1', content: line.substring(2) })
     }
-    // Bold
-    else if (line.includes('**')) {
-      elements.push(line)
-    }
-    // Italic
-    else if (line.includes('*')) {
-      elements.push(line)
-    }
-    // Code blocks
-    else if (line.startsWith('`')) {
-      elements.push({ type: 'code', content: line.replace(/`/g, '') })
-    }
     // Lists
     else if (line.startsWith('- ')) {
       elements.push({ type: 'li', content: line.substring(2) })
     }
-    // Regular text
+    // Code blocks
+    else if (line.startsWith('`') && line.endsWith('`')) {
+      elements.push({ type: 'code', content: line.replace(/`/g, '') })
+    }
+    // Regular text (including formatted text)
     else if (line.trim()) {
       elements.push(line)
     }

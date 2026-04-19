@@ -279,10 +279,10 @@ export function GraphCanvas() {
     []
   )
 
-  const onPaneContextMenu = useCallback((event: React.MouseEvent) => {
-    event.preventDefault()
-    setContextMenu({
-      x: event.clientX,
+  const onPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent) => {
+  event.preventDefault()
+  setContextMenu({
+  x: event.clientX,
       y: event.clientY,
     })
   }, [])
@@ -362,7 +362,7 @@ export function GraphCanvas() {
   }, [isSelecting, selectStart])
 
   // Handle pane mouse up to finalize selection
-  const handlePaneMouseUp = useCallback((e: React.MouseEvent) => {
+  const handlePaneMouseUp = useCallback((e: MouseEvent | React.MouseEvent) => {
     if (!isSelecting || !selectBox || !reactFlowInstance) {
       setIsSelecting(false)
       setSelectBox(null)

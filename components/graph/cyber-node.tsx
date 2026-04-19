@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 
 export type NodeStatus = "default" | "in-progress" | "success" | "failed" | "paused"
 
-export interface CyberNodeData {
+export interface CyberNodeData extends Record<string, unknown> {
   label: string
   status: NodeStatus
   entityType: string

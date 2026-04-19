@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useState, useRef, useEffect } from "react"
-import { CircleHelp, X, ChevronDown, ChevronUp } from "lucide-react"
+import { CircleHelp, X, ChevronDown, ChevronUp, Workflow } from "lucide-react"
 import {
   ReactFlow,
   Background,
@@ -15,6 +15,7 @@ import {
   type NodeMouseHandler,
   BackgroundVariant,
   MarkerType,
+  SmoothStepEdge,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 
@@ -24,6 +25,10 @@ import { DetailPanel } from "./detail-panel"
 
 const nodeTypes = {
   cyber: CyberNode,
+}
+
+const edgeTypes = {
+  smoothstep: SmoothStepEdge,
 }
 
 const defaultEdgeOptions = {
@@ -56,6 +61,7 @@ export function GraphCanvas() {
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [bulkDeleteModal, setBulkDeleteModal] = useState(false)
   const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(null)
+  const [useTidyEdges, setUseTidyEdges] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
 
@@ -64,9 +70,12 @@ export function GraphCanvas() {
     const savedData = localStorage.getItem("cyber-graph-data")
     if (savedData) {
       try {
-        const { nodes: savedNodes, edges: savedEdges } = JSON.parse(savedData)
+        const { nodes: savedNodes, edges: savedEdges, useTidyEdges: savedTidyEdges } = JSON.parse(savedData)
         setNodes(savedNodes || [])
         setEdges(savedEdges || [])
+        if (savedTidyEdges !== undefined) {
+          setUseTidyEdges(savedTidyEdges)
+        }
       } catch {
         // Invalid data, start fresh
       }
@@ -87,15 +96,20 @@ export function GraphCanvas() {
   // Auto-save to localStorage
   useEffect(() => {
     if (nodes.length > 0 || edges.length > 0) {
-      localStorage.setItem("cyber-graph-data", JSON.stringify({ nodes, edges }))
+      localStorage.setItem("cyber-graph-data", JSON.stringify({ nodes, edges, useTidyEdges }))
     }
-  }, [nodes, edges])
+  }, [nodes, edges, useTidyEdges])
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => addEdge(connection, eds))
+      const newEdge = {
+        ...connection,
+        type: useTidyEdges ? "smoothstep" : undefined,
+        pathOptions: useTidyEdges ? { borderRadius: 8, offset: 20 } : undefined,
+      }
+      setEdges((eds) => addEdge(newEdge, eds))
     },
-    [setEdges]
+    [setEdges, useTidyEdges]
   )
 
   const createNode = useCallback(
@@ -169,11 +183,13 @@ export function GraphCanvas() {
           source: parentId,
           target: newNode.id,
           ...defaultEdgeOptions,
+          type: useTidyEdges ? "smoothstep" : undefined,
+          pathOptions: useTidyEdges ? { borderRadius: 8, offset: 20 } : undefined,
         }
         setEdges((eds) => [...eds, newEdge])
       }
     },
-    [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges]
+    [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges, useTidyEdges]
   )
 
   const handleSetStatus = useCallback(
@@ -265,6 +281,24 @@ export function GraphCanvas() {
     },
     [setEdges]
   )
+
+  // Toggle tidy edges mode - converts edges to orthogonal (circuit-style) routing
+  const handleTidyEdges = useCallback(() => {
+    setUseTidyEdges((prev) => {
+      const newValue = !prev
+      
+      // Update all edges to use smoothstep type or remove the type for default bezier
+      setEdges((eds) =>
+        eds.map((edge) => ({
+          ...edge,
+          type: newValue ? "smoothstep" : undefined,
+          pathOptions: newValue ? { borderRadius: 8, offset: 20 } : undefined,
+        }))
+      )
+      
+      return newValue
+    })
+  }, [setEdges])
 
   const onNodeContextMenu: NodeMouseHandler = useCallback(
     (event, node) => {
@@ -546,7 +580,7 @@ export function GraphCanvas() {
 
   // Export function
   const handleExport = useCallback(() => {
-    const data = JSON.stringify({ nodes, edges }, null, 2)
+    const data = JSON.stringify({ nodes, edges, useTidyEdges }, null, 2)
     const blob = new Blob([data], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -554,7 +588,7 @@ export function GraphCanvas() {
     a.download = `cyber-map-${new Date().toISOString().split("T")[0]}.json`
     a.click()
     URL.revokeObjectURL(url)
-  }, [nodes, edges])
+  }, [nodes, edges, useTidyEdges])
 
   // Import function
   const handleImport = useCallback(() => {
@@ -571,6 +605,9 @@ export function GraphCanvas() {
             if (data.nodes && data.edges) {
               setNodes(data.nodes)
               setEdges(data.edges)
+              if (data.useTidyEdges !== undefined) {
+                setUseTidyEdges(data.useTidyEdges)
+              }
             }
           } catch {
             console.error("Invalid JSON file")
@@ -645,6 +682,7 @@ export function GraphCanvas() {
         onNodeDoubleClick={onNodeDoubleClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
         panOnDrag={!isSelectMode}
         selectionOnDrag={false}
@@ -892,8 +930,20 @@ export function GraphCanvas() {
         </button>
       </div>
 
-      {/* Import/Export buttons */}
+      {/* Import/Export/Tidy buttons */}
       <div className="absolute right-4 bottom-4 z-10 flex gap-2">
+        <button
+          onClick={handleTidyEdges}
+          className={`flex items-center gap-1.5 rounded border px-3 py-1.5 font-mono text-xs backdrop-blur-sm transition-colors ${
+            useTidyEdges
+              ? "border-primary bg-primary/20 text-primary"
+              : "border-border bg-card/80 text-foreground hover:bg-muted"
+          }`}
+          title={useTidyEdges ? "Switch to curved edges" : "Tidy edges (circuit-style)"}
+        >
+          <Workflow size={14} />
+          Tidy
+        </button>
         <button
           onClick={handleImport}
           className="rounded border border-border bg-card/80 px-3 py-1.5 font-mono text-xs text-foreground backdrop-blur-sm transition-colors hover:bg-muted"

@@ -54,10 +54,8 @@ export function GraphCanvas() {
   const [isSelecting, setIsSelecting] = useState(false)
   const [selectStart, setSelectStart] = useState<{ x: number; y: number } | null>(null)
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
-  const [history, setHistory] = useState<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
   const [bulkDeleteModal, setBulkDeleteModal] = useState(false)
   const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(null)
-  const [redoHistory, setRedoHistory] = useState<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
 
@@ -75,10 +73,7 @@ export function GraphCanvas() {
     }
   }, [setNodes, setEdges])
 
-  // Helper function to save state to history
-  const saveToHistory = useCallback((newNodes: Node<CyberNodeData>[], newEdges: Edge[]) => {
-    setHistory((h) => [...h.slice(-49), { nodes: newNodes, edges: newEdges }])
-  }, [])
+
 
   // Adjust initial zoom level after ReactFlow initializes
   useEffect(() => {
@@ -131,9 +126,30 @@ export function GraphCanvas() {
       if (parentId) {
         const parentNode = nodes.find((n) => n.id === parentId)
         if (parentNode) {
+          // Count existing children of this parent to determine offset
+          const existingChildren = edges.filter((e) => e.source === parentId).length
+          
+          // Spread children in a fan pattern below the parent
+          const baseOffsetY = 120
+          const spreadAngle = 30 // degrees between each child
+          const maxSpread = 60 // max angle from center
+          
+          // Calculate angle for this child (-maxSpread to +maxSpread)
+          const totalChildren = existingChildren + 1
+          let angle = 0
+          if (totalChildren > 1) {
+            // Spread evenly
+            const step = Math.min(spreadAngle, (maxSpread * 2) / (totalChildren - 1))
+            angle = -maxSpread + (existingChildren * step) + (step / 2)
+          }
+          
+          // Convert angle to x offset (sin) while keeping y fixed
+          const radians = (angle * Math.PI) / 180
+          const xOffset = Math.sin(radians) * baseOffsetY
+          
           position = {
-            x: parentNode.position.x + 50,
-            y: parentNode.position.y + 120,
+            x: parentNode.position.x + xOffset,
+            y: parentNode.position.y + baseOffsetY,
           }
         }
       } else if (contextMenu) {
@@ -157,7 +173,7 @@ export function GraphCanvas() {
         setEdges((eds) => [...eds, newEdge])
       }
     },
-    [reactFlowInstance, nodes, contextMenu, createNode, setNodes, setEdges]
+    [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges]
   )
 
   const handleSetStatus = useCallback(
@@ -233,9 +249,8 @@ export function GraphCanvas() {
   const handleDeleteEdge = useCallback(
     (edgeId: string) => {
       setEdges((eds) => eds.filter((edge) => edge.id !== edgeId))
-      saveToHistory(nodes, edges.filter((e) => e.id !== edgeId))
     },
-    [setEdges, nodes, edges, saveToHistory]
+    [setEdges]
   )
 
   const handleReverseEdge = useCallback(
@@ -247,12 +262,8 @@ export function GraphCanvas() {
             : edge
         )
       )
-      const reversedEdges = edges.map((e) =>
-        e.id === edgeId ? { ...e, source: e.target, target: e.source } : e
-      )
-      saveToHistory(nodes, reversedEdges)
     },
-    [setEdges, nodes, edges, saveToHistory]
+    [setEdges]
   )
 
   const onNodeContextMenu: NodeMouseHandler = useCallback(
@@ -366,6 +377,7 @@ export function GraphCanvas() {
     if (!isSelecting || !selectBox || !reactFlowInstance) {
       setIsSelecting(false)
       setSelectBox(null)
+      setSelectStart(null)
       return
     }
 
@@ -373,6 +385,7 @@ export function GraphCanvas() {
     if (selectBox.width < 5 && selectBox.height < 5) {
       setIsSelecting(false)
       setSelectBox(null)
+      setSelectStart(null)
       return
     }
 
@@ -380,6 +393,7 @@ export function GraphCanvas() {
     if (!rect) {
       setIsSelecting(false)
       setSelectBox(null)
+      setSelectStart(null)
       return
     }
 
@@ -437,6 +451,7 @@ export function GraphCanvas() {
     setSelectedNode(null)
     setIsSelecting(false)
     setSelectBox(null)
+    setSelectStart(null)
   }, [isSelecting, selectBox, nodes, reactFlowInstance])
 
   // Custom scroll and zoom handler
@@ -488,29 +503,6 @@ export function GraphCanvas() {
       const target = e.target as HTMLElement
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
       
-      // Ctrl+Z for undo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault()
-        if (history.length > 0) {
-          // Save current state to redo history before undoing
-          setRedoHistory((prev) => [...prev, { nodes, edges }])
-          const previous = history[history.length - 1]
-          setNodes(previous.nodes)
-          setEdges(previous.edges)
-          setHistory((h) => h.slice(0, -1))
-        }
-      }
-      // Ctrl+Shift+Z or Ctrl+Y for redo
-      if ((((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) || ((e.ctrlKey || e.metaKey) && e.key === 'y')) && !isInput) {
-        e.preventDefault()
-        if (redoHistory.length > 0) {
-          const next = redoHistory[redoHistory.length - 1]
-          setHistory((prev) => [...prev, { nodes, edges }])
-          setNodes(next.nodes)
-          setEdges(next.edges)
-          setRedoHistory((h) => h.slice(0, -1))
-        }
-      }
       // Delete for selected nodes (only if not in input) - show confirmation
       if (e.key === "Delete" && !isInput) {
         if (selectedNodes.size > 0) {
@@ -540,7 +532,7 @@ export function GraphCanvas() {
       document.removeEventListener("keydown", handleKeyDown)
       document.removeEventListener("keyup", handleKeyUp)
     }
-  }, [selectedNode, selectedNodes, history, redoHistory, nodes, edges, requestDeleteNode, isPanning, setNodes, setEdges])
+  }, [selectedNode, selectedNodes, requestDeleteNode, isPanning])
 
   // Export function
   const handleExport = useCallback(() => {
@@ -583,7 +575,6 @@ export function GraphCanvas() {
   // Bulk status update
   const handleBulkStatusUpdate = useCallback(
     (status: NodeStatus) => {
-      saveToHistory(nodes, edges)
       const updatedNodes = nodes.map((node) =>
         selectedNodes.has(node.id)
           ? { ...node, data: { ...node.data, status } }
@@ -592,13 +583,11 @@ export function GraphCanvas() {
       setNodes(updatedNodes)
       setSelectedNodes(new Set())
     },
-    [nodes, edges, selectedNodes, setNodes, saveToHistory]
+    [nodes, selectedNodes, setNodes]
   )
 
   // Bulk delete with confirmation
   const handleBulkDelete = useCallback(() => {
-    // Save current state to history before deleting
-    saveToHistory(nodes, edges)
     const newNodes = nodes.filter((n) => !selectedNodes.has(n.id))
     const newEdges = edges.filter(
       (e) => !selectedNodes.has(e.source) && !selectedNodes.has(e.target)
@@ -607,8 +596,7 @@ export function GraphCanvas() {
     setEdges(newEdges)
     setBulkDeleteModal(false)
     setSelectedNodes(new Set())
-    setRedoHistory([]) // Clear redo history after action
-  }, [nodes, edges, selectedNodes, setNodes, setEdges, saveToHistory])
+  }, [nodes, edges, selectedNodes, setNodes, setEdges])
 
   return (
     <div ref={reactFlowWrapper} className="relative h-screen w-screen" 
@@ -648,7 +636,10 @@ export function GraphCanvas() {
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
-        className="bg-background"
+        selectionOnDrag={false}
+        selectionMode={undefined}
+        selectNodesOnDrag={false}
+        className="bg-background [&_.react-flow__nodesselection-rect]:!hidden [&_.react-flow__selection]:!hidden"
         proOptions={{ hideAttribution: true }}
       >
         <Background
@@ -721,7 +712,7 @@ export function GraphCanvas() {
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>Ctrl+Z to undo, Ctrl+Shift+Z or Ctrl+Y to redo</span>
+              <span>Press Delete key to remove selected nodes</span>
             </li>
           </ul>
         </div>

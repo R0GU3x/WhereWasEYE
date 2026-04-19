@@ -59,8 +59,8 @@ export function DetailPanel({ node, onClose, onUpdateNode, onDeleteNode }: Detai
             onChange={(e) => onUpdateNode(node.id, { label: e.target.value })}
             className="bg-transparent font-mono text-lg font-semibold text-foreground outline-none focus:border-b focus:border-primary"
           />
-          <div className={cn("mt-1 text-sm", statusLabels[data.status].className)}>
-            {statusLabels[data.status].label}
+          <div className={cn("mt-1 text-sm", statusLabels[data.status]?.className || "text-muted-foreground")}>
+            {statusLabels[data.status]?.label || data.status || "Unknown"}
           </div>
         </div>
         <button

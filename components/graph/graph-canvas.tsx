@@ -407,10 +407,16 @@ export function GraphCanvas() {
   )
 
   const onPaneClick = useCallback(() => {
-    setSelectedNode(null)
-    setSelectedNodes(new Set())
+    // Only clear selection if not drawing a selection box
+    if (!isDrawingSelectBox) {
+      setSelectedNode(null)
+      // Only clear multi-selection when NOT in select mode (prevent accidental clearing)
+      if (!isSelectMode) {
+        setSelectedNodes(new Set())
+      }
+    }
     setContextMenu(null)
-  }, [])
+  }, [isDrawingSelectBox, isSelectMode])
 
   // Handle pane mouse down for drag-to-select (only in selection mode with Ctrl)
   const handlePaneMouseDown = useCallback((e: React.MouseEvent) => {
@@ -518,13 +524,20 @@ export function GraphCanvas() {
         selectedNodeIds.forEach((id) => newSet.add(id))
         return newSet
       })
+      // Also update nodes to reflect selection state
+      setNodes((nds) =>
+        nds.map((node) => ({
+          ...node,
+          selected: selectedNodeIds.includes(node.id) || selectedNodes.has(node.id),
+        }))
+      )
     }
     
     setSelectedNode(null)
     setIsDrawingSelectBox(false)
     setSelectBox(null)
     setSelectStart(null)
-  }, [isDrawingSelectBox, selectBox, nodes, reactFlowInstance])
+  }, [isDrawingSelectBox, selectBox, nodes, reactFlowInstance, selectedNodes, setNodes])
 
   // Custom scroll and zoom handler
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -575,13 +588,20 @@ export function GraphCanvas() {
       const target = e.target as HTMLElement
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
       
-      // Delete for selected nodes (only if not in input) - show confirmation
-      if (e.key === "Delete" && !isInput) {
+      // Delete/Backspace for selected nodes (only if not in input) - show confirmation
+      if ((e.key === "Delete" || e.key === "Backspace") && !isInput) {
+        e.preventDefault()
         if (selectedNodes.size > 0) {
           setBulkDeleteModal(true)
         } else if (selectedNode) {
           requestDeleteNode(selectedNode.id)
         }
+      }
+      // Escape clears selection
+      if (e.key === "Escape" && !isInput) {
+        setSelectedNode(null)
+        setSelectedNodes(new Set())
+        setContextMenu(null)
       }
       // Spacebar toggles to selection mode (default is pan mode)
       if (e.code === "Space" && !isSelectMode && !isInput) {
@@ -712,12 +732,13 @@ export function GraphCanvas() {
       {/* Drag-to-select box */}
       {selectBox && (
         <div
-          className="pointer-events-none absolute border-2 border-primary/50 bg-primary/5 z-30"
+          className="pointer-events-none absolute z-50 rounded border-2 border-dashed border-primary bg-primary/10"
           style={{
             left: `${selectBox.x}px`,
             top: `${selectBox.y}px`,
             width: `${selectBox.width}px`,
             height: `${selectBox.height}px`,
+            boxShadow: "0 0 20px var(--glow-cyan), inset 0 0 10px var(--glow-cyan)",
           }}
         />
       )}
@@ -824,7 +845,11 @@ export function GraphCanvas() {
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span><strong>Delete key:</strong> remove selected nodes</span>
+              <span><strong>Delete/Backspace:</strong> remove selected nodes</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span><strong>Escape:</strong> clear selection</span>
             </li>
           </ul>
         </div>
@@ -832,36 +857,42 @@ export function GraphCanvas() {
 
       {/* Bulk Operations Toolbar */}
       {selectedNodes.size > 0 && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-card/95 border border-border rounded-lg p-3 backdrop-blur-sm flex items-center gap-2">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-card/95 border border-border rounded-lg p-3 backdrop-blur-sm flex items-center gap-2 flex-wrap justify-center max-w-3xl">
           <span className="font-mono text-sm text-muted-foreground">{selectedNodes.size} selected</span>
           <div className="h-4 w-px bg-border" />
           <button
-            onClick={() => handleBulkStatusUpdate("in-progress")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-in-progress)]/10 text-[var(--node-in-progress)] hover:bg-[var(--node-in-progress)]/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("queued")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-queued)]/10 text-[var(--node-queued)] hover:bg-[var(--node-queued)]/20 transition-colors"
           >
-            In Progress
+            Queued
           </button>
           <button
-            onClick={() => handleBulkStatusUpdate("paused")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-paused)]/10 text-[var(--node-paused)] hover:bg-[var(--node-paused)]/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("running")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-running)]/10 text-[var(--node-running)] hover:bg-[var(--node-running)]/20 transition-colors"
           >
-            Paused
+            Running
           </button>
           <button
-            onClick={() => handleBulkStatusUpdate("success")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-success)]/10 text-[var(--node-success)] hover:bg-[var(--node-success)]/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("interesting")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-interesting)]/10 text-[var(--node-interesting)] hover:bg-[var(--node-interesting)]/20 transition-colors"
           >
-            Success
+            Interesting
           </button>
           <button
-            onClick={() => handleBulkStatusUpdate("failed")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-failed)]/10 text-[var(--node-failed)] hover:bg-[var(--node-failed)]/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("exploitable")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-exploitable)]/10 text-[var(--node-exploitable)] hover:bg-[var(--node-exploitable)]/20 transition-colors"
           >
-            Failed
+            Exploitable
           </button>
           <button
-            onClick={() => handleBulkStatusUpdate("default")}
-            className="rounded px-3 py-1 text-sm font-medium bg-muted/10 text-muted-foreground hover:bg-muted/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("pwned")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-pwned)]/10 text-[var(--node-pwned)] hover:bg-[var(--node-pwned)]/20 transition-colors"
+          >
+            Pwned
+          </button>
+          <button
+            onClick={() => handleBulkStatusUpdate("not-yet")}
+            className="rounded px-3 py-1 text-sm font-medium bg-muted/20 text-muted-foreground hover:bg-muted/30 transition-colors"
           >
             Reset
           </button>
@@ -940,21 +971,29 @@ export function GraphCanvas() {
                     {/* Render nodes */}
                     {nodes.map((node) => {
                       const data = node.data as CyberNodeData
-                      let color = "bg-muted-foreground/50"
-                      if (data.status === "in-progress") color = "bg-blue-400"
-                      if (data.status === "success") color = "bg-green-400"
-                      if (data.status === "failed") color = "bg-red-400"
-                      
                       const pos = nodePositions.get(node.id)!
+                      
+                      // Map status to CSS variable colors
+                      const statusColorMap: Record<NodeStatus, string> = {
+                        "not-yet": "var(--node-not-yet)",
+                        "queued": "var(--node-queued)",
+                        "running": "var(--node-running)",
+                        "needs-review": "var(--node-needs-review)",
+                        "interesting": "var(--node-interesting)",
+                        "false-positive": "var(--node-false-positive)",
+                        "exploitable": "var(--node-exploitable)",
+                        "pwned": "var(--node-pwned)",
+                      }
                       
                       return (
                         <div
                           key={node.id}
-                          className={`absolute h-1.5 w-1.5 rounded-full ${color}`}
+                          className="absolute h-1.5 w-1.5 rounded-full"
                           style={{ 
                             left: `${pos.left}%`, 
                             top: `${pos.top}%`,
-                            transform: 'translate(-50%, -50%)'
+                            transform: 'translate(-50%, -50%)',
+                            backgroundColor: statusColorMap[data.status] || "var(--muted-foreground)",
                           }}
                         />
                       )

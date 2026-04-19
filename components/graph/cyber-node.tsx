@@ -4,7 +4,7 @@ import { memo } from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
 import { cn } from "@/lib/utils"
 
-export type NodeStatus = "default" | "in-progress" | "success" | "failed"
+export type NodeStatus = "default" | "in-progress" | "success" | "failed" | "paused"
 
 export interface CyberNodeData {
   label: string
@@ -19,6 +19,7 @@ const statusStyles: Record<NodeStatus, string> = {
   "in-progress": "border-[var(--node-in-progress)] bg-card shadow-[0_0_20px_rgba(100,150,255,0.3)]",
   success: "border-[var(--node-success)] bg-card shadow-[0_0_20px_rgba(100,220,150,0.3)]",
   failed: "border-[var(--node-failed)] bg-card shadow-[0_0_20px_rgba(255,100,100,0.3)]",
+  paused: "border-[var(--node-paused)] bg-card shadow-[0_0_20px_rgba(240,200,100,0.3)]",
 }
 
 const statusIndicators: Record<NodeStatus, string> = {
@@ -26,6 +27,7 @@ const statusIndicators: Record<NodeStatus, string> = {
   "in-progress": "bg-[var(--node-in-progress)]",
   success: "bg-[var(--node-success)]",
   failed: "bg-[var(--node-failed)]",
+  paused: "bg-[var(--node-paused)]",
 }
 
 function CyberNodeComponent({ data, selected }: NodeProps) {
@@ -71,5 +73,66 @@ function CyberNodeComponent({ data, selected }: NodeProps) {
     </div>
   )
 }
+
+  const handleEditSubmit = () => {
+    setIsEditing(false)
+    // Update will be handled by parent through onUpdateNode
+  }
+
+  return (
+    <div
+      className={cn(
+        "min-w-[140px] rounded-lg border-2 px-4 py-3 transition-all duration-200",
+        statusStyles[nodeData.status],
+        selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+      )}
+      onDoubleClick={handleDoubleClick}
+    >
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!h-3 !w-3 !border-2 !border-primary !bg-background"
+      />
+      
+      <div className="flex items-center gap-2">
+        <div
+          className={cn(
+            "h-2.5 w-2.5 rounded-full",
+            statusIndicators[nodeData.status]
+          )}
+        />
+        {isEditing ? (
+          <input
+            autoFocus
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleEditSubmit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleEditSubmit()
+              if (e.key === 'Escape') setIsEditing(false)
+            }}
+            className="bg-transparent font-mono text-sm font-medium text-foreground outline-none border-b border-primary"
+          />
+        ) : (
+          <span className="font-mono text-sm font-medium text-foreground">
+            {nodeData.label}
+          </span>
+        )}
+      </div>
+      
+      {nodeData.entityType && (
+        <div className="mt-1 font-mono text-xs text-muted-foreground">
+          {nodeData.entityType}
+        </div>
+      )}
+      
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!h-3 !w-3 !border-2 !border-primary !bg-background"
+      />
+    </div>
+  )
 
 export const CyberNode = memo(CyberNodeComponent)

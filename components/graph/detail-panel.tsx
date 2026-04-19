@@ -14,6 +14,7 @@ interface DetailPanelProps {
 const statusLabels: Record<NodeStatus, { label: string; className: string }> = {
   default: { label: "Default", className: "text-muted-foreground" },
   "in-progress": { label: "In Progress", className: "text-[var(--node-in-progress)]" },
+  paused: { label: "Paused", className: "text-[var(--node-paused)]" },
   success: { label: "Success", className: "text-[var(--node-success)]" },
   failed: { label: "Failed", className: "text-[var(--node-failed)]" },
 }

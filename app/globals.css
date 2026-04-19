@@ -43,6 +43,7 @@
   --node-in-progress: oklch(0.55 0.2 250);
   --node-success: oklch(0.6 0.2 145);
   --node-failed: oklch(0.55 0.2 25);
+  --node-paused: oklch(0.65 0.2 80);
   --glow-cyan: oklch(0.7 0.2 180);
   --glow-green: oklch(0.6 0.2 145);
   --glow-red: oklch(0.55 0.2 25);

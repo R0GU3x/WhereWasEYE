@@ -8,20 +8,26 @@ interface ContextMenuProps {
   x: number
   y: number
   nodeId?: string
+  edgeId?: string
   onClose: () => void
   onAddNode: (parentId?: string) => void
   onSetStatus: (nodeId: string, status: NodeStatus) => void
   onDeleteNode: (nodeId: string) => void
+  onDeleteEdge?: (edgeId: string) => void
+  onReverseEdge?: (edgeId: string) => void
 }
 
 export function ContextMenu({
   x,
   y,
   nodeId,
+  edgeId,
   onClose,
   onAddNode,
   onSetStatus,
   onDeleteNode,
+  onDeleteEdge,
+  onReverseEdge,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ x, y })
@@ -83,7 +89,23 @@ export function ContextMenu({
     }
   }, [onClose])
 
-  const menuItems = nodeId
+  const menuItems = edgeId
+    ? [
+        {
+          label: "Reverse Direction",
+          icon: "⇄",
+          action: () => onReverseEdge?.(edgeId),
+        },
+        { type: "separator" as const },
+        {
+          label: "Delete Edge",
+          icon: "×",
+          iconClass: "text-destructive",
+          action: () => onDeleteEdge?.(edgeId),
+          className: "text-destructive hover:bg-destructive/10",
+        },
+      ]
+    : nodeId
     ? [
         {
           label: "Add Child Node",
@@ -96,6 +118,12 @@ export function ContextMenu({
           icon: "●",
           iconClass: "text-[var(--node-in-progress)]",
           action: () => onSetStatus(nodeId, "in-progress"),
+        },
+        {
+          label: "Paused",
+          icon: "●",
+          iconClass: "text-[var(--node-paused)]",
+          action: () => onSetStatus(nodeId, "paused"),
         },
         {
           label: "Success",

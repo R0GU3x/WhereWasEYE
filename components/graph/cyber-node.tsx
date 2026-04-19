@@ -4,7 +4,7 @@ import { memo } from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
 import { cn } from "@/lib/utils"
 
-export type NodeStatus = "default" | "in-progress" | "success" | "failed"
+export type NodeStatus = "default" | "in-progress" | "success" | "failed" | "paused"
 
 export interface CyberNodeData {
   label: string
@@ -19,6 +19,7 @@ const statusStyles: Record<NodeStatus, string> = {
   "in-progress": "border-[var(--node-in-progress)] bg-card shadow-[0_0_20px_rgba(100,150,255,0.3)]",
   success: "border-[var(--node-success)] bg-card shadow-[0_0_20px_rgba(100,220,150,0.3)]",
   failed: "border-[var(--node-failed)] bg-card shadow-[0_0_20px_rgba(255,100,100,0.3)]",
+  paused: "border-[var(--node-paused)] bg-card shadow-[0_0_20px_rgba(240,200,100,0.3)]",
 }
 
 const statusIndicators: Record<NodeStatus, string> = {
@@ -26,6 +27,7 @@ const statusIndicators: Record<NodeStatus, string> = {
   "in-progress": "bg-[var(--node-in-progress)]",
   success: "bg-[var(--node-success)]",
   failed: "bg-[var(--node-failed)]",
+  paused: "bg-[var(--node-paused)]",
 }
 
 function CyberNodeComponent({ data, selected }: NodeProps) {

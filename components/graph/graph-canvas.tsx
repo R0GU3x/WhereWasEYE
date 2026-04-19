@@ -6,7 +6,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -56,8 +55,8 @@ export function GraphCanvas() {
   const [selectStart, setSelectStart] = useState<{ x: number; y: number } | null>(null)
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [history, setHistory] = useState<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
-  const [bulkStatusModal, setBulkStatusModal] = useState<NodeStatus | null>(null)
   const [bulkDeleteModal, setBulkDeleteModal] = useState(false)
+  const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(null)
   const [redoHistory, setRedoHistory] = useState<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
@@ -180,6 +179,25 @@ export function GraphCanvas() {
     [setNodes, selectedNode]
   )
 
+  // Request confirmation for deleting a node
+  const requestDeleteNode = useCallback((nodeId: string) => {
+    setDeleteConfirmNodeId(nodeId)
+  }, [])
+
+  // Actually delete the node after confirmation
+  const handleConfirmDeleteNode = useCallback(() => {
+    if (!deleteConfirmNodeId) return
+    setNodes((nds) => nds.filter((node) => node.id !== deleteConfirmNodeId))
+    setEdges((eds) =>
+      eds.filter((edge) => edge.source !== deleteConfirmNodeId && edge.target !== deleteConfirmNodeId)
+    )
+    if (selectedNode?.id === deleteConfirmNodeId) {
+      setSelectedNode(null)
+    }
+    setDeleteConfirmNodeId(null)
+  }, [setNodes, setEdges, selectedNode, deleteConfirmNodeId])
+
+  // Direct delete (for keyboard shortcut after bulk confirmation or undo scenarios)
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
       setNodes((nds) => nds.filter((node) => node.id !== nodeId))
@@ -275,6 +293,10 @@ export function GraphCanvas() {
         // Ctrl/Cmd + click to add/remove from selection
         setSelectedNodes((prev) => {
           const newSet = new Set(prev)
+          // If there's a single selected node, add it to the multi-selection first
+          if (selectedNode && !newSet.has(selectedNode.id)) {
+            newSet.add(selectedNode.id)
+          }
           if (newSet.has(node.id)) {
             newSet.delete(node.id)
           } else {
@@ -284,12 +306,12 @@ export function GraphCanvas() {
         })
         setSelectedNode(null)
       } else {
-        // Single select
+        // Single select - clear multi-selection and select this node
         setSelectedNode(node as Node<CyberNodeData>)
         setSelectedNodes(new Set())
       }
     },
-    []
+    [selectedNode]
   )
 
   const onNodeDoubleClick: NodeMouseHandler = useCallback(
@@ -340,8 +362,8 @@ export function GraphCanvas() {
   }, [isSelecting, selectStart])
 
   // Handle pane mouse up to finalize selection
-  const handlePaneMouseUp = useCallback(() => {
-    if (!isSelecting || !selectBox) {
+  const handlePaneMouseUp = useCallback((e: React.MouseEvent) => {
+    if (!isSelecting || !selectBox || !reactFlowInstance) {
       setIsSelecting(false)
       setSelectBox(null)
       return
@@ -354,27 +376,68 @@ export function GraphCanvas() {
       return
     }
 
-    // Find nodes within the selection box
+    const rect = reactFlowWrapper.current?.getBoundingClientRect()
+    if (!rect) {
+      setIsSelecting(false)
+      setSelectBox(null)
+      return
+    }
+
+    // Convert screen selection box corners to flow coordinates
+    const topLeft = reactFlowInstance.screenToFlowPosition({
+      x: selectBox.x + rect.left,
+      y: selectBox.y + rect.top,
+    })
+    const bottomRight = reactFlowInstance.screenToFlowPosition({
+      x: selectBox.x + selectBox.width + rect.left,
+      y: selectBox.y + selectBox.height + rect.top,
+    })
+
+    const flowSelectBox = {
+      x: Math.min(topLeft.x, bottomRight.x),
+      y: Math.min(topLeft.y, bottomRight.y),
+      width: Math.abs(bottomRight.x - topLeft.x),
+      height: Math.abs(bottomRight.y - topLeft.y),
+    }
+
+    // Find nodes within the selection box using flow coordinates
+    const nodeWidth = 140
+    const nodeHeight = 60
     const selectedNodeIds = nodes.filter((node) => {
-      const nodeX = node.position.x
-      const nodeY = node.position.y
-      const nodeSize = 140 // approximate width/height of a node
+      const nodeLeft = node.position.x
+      const nodeTop = node.position.y
+      const nodeRight = nodeLeft + nodeWidth
+      const nodeBottom = nodeTop + nodeHeight
+
+      const boxLeft = flowSelectBox.x
+      const boxTop = flowSelectBox.y
+      const boxRight = flowSelectBox.x + flowSelectBox.width
+      const boxBottom = flowSelectBox.y + flowSelectBox.height
+
+      // Check if node overlaps with selection box
       return (
-        nodeX + nodeSize >= selectBox.x &&
-        nodeX <= selectBox.x + selectBox.width &&
-        nodeY + nodeSize >= selectBox.y &&
-        nodeY <= selectBox.y + selectBox.height
+        nodeLeft < boxRight &&
+        nodeRight > boxLeft &&
+        nodeTop < boxBottom &&
+        nodeBottom > boxTop
       )
     }).map((n) => n.id)
 
-    if (selectedNodeIds.length > 0) {
+    // Ctrl/Cmd key adds to existing selection
+    if ((e.ctrlKey || e.metaKey) && selectedNodeIds.length > 0) {
+      setSelectedNodes((prev) => {
+        const newSet = new Set(prev)
+        selectedNodeIds.forEach((id) => newSet.add(id))
+        return newSet
+      })
+    } else if (selectedNodeIds.length > 0) {
       setSelectedNodes(new Set(selectedNodeIds))
-      setSelectedNode(null)
     }
-
+    
+    setSelectedNode(null)
     setIsSelecting(false)
     setSelectBox(null)
-  }, [isSelecting, selectBox, nodes])
+  }, [isSelecting, selectBox, nodes, reactFlowInstance])
 
   // Custom scroll and zoom handler
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -448,20 +511,14 @@ export function GraphCanvas() {
           setRedoHistory((h) => h.slice(0, -1))
         }
       }
-      // Delete for selected nodes (only if not in input)
+      // Delete for selected nodes (only if not in input) - show confirmation
       if (e.key === "Delete" && !isInput) {
         if (selectedNodes.size > 0) {
-          // Save to history before deleting
-          const newNodes = nodes.filter((n) => !selectedNodes.has(n.id))
-          const newEdges = edges.filter((edge) => !selectedNodes.has(edge.source) && !selectedNodes.has(edge.target))
-          saveToHistory(nodes, edges)
-          setNodes(newNodes)
-          setEdges(newEdges)
-          setSelectedNodes(new Set())
-          setSelectedNode(null)
-          setRedoHistory([]) // Clear redo history after action
+          // Show bulk delete confirmation modal
+          setBulkDeleteModal(true)
         } else if (selectedNode) {
-          handleDeleteNode(selectedNode.id)
+          // Show single delete confirmation
+          requestDeleteNode(selectedNode.id)
         }
       }
       // Spacebar for pan mode (only if not in input)
@@ -483,7 +540,7 @@ export function GraphCanvas() {
       document.removeEventListener("keydown", handleKeyDown)
       document.removeEventListener("keyup", handleKeyUp)
     }
-  }, [selectedNode, selectedNodes, history, redoHistory, nodes, edges, handleDeleteNode, isPanning, saveToHistory])
+  }, [selectedNode, selectedNodes, history, redoHistory, nodes, edges, requestDeleteNode, isPanning, setNodes, setEdges])
 
   // Export function
   const handleExport = useCallback(() => {
@@ -526,14 +583,13 @@ export function GraphCanvas() {
   // Bulk status update
   const handleBulkStatusUpdate = useCallback(
     (status: NodeStatus) => {
+      saveToHistory(nodes, edges)
       const updatedNodes = nodes.map((node) =>
         selectedNodes.has(node.id)
           ? { ...node, data: { ...node.data, status } }
           : node
       )
       setNodes(updatedNodes)
-      saveToHistory(updatedNodes, edges)
-      setBulkStatusModal(null)
       setSelectedNodes(new Set())
     },
     [nodes, edges, selectedNodes, setNodes, saveToHistory]
@@ -541,15 +597,17 @@ export function GraphCanvas() {
 
   // Bulk delete with confirmation
   const handleBulkDelete = useCallback(() => {
+    // Save current state to history before deleting
+    saveToHistory(nodes, edges)
     const newNodes = nodes.filter((n) => !selectedNodes.has(n.id))
     const newEdges = edges.filter(
       (e) => !selectedNodes.has(e.source) && !selectedNodes.has(e.target)
     )
     setNodes(newNodes)
     setEdges(newEdges)
-    saveToHistory(newNodes, newEdges)
     setBulkDeleteModal(false)
     setSelectedNodes(new Set())
+    setRedoHistory([]) // Clear redo history after action
   }, [nodes, edges, selectedNodes, setNodes, setEdges, saveToHistory])
 
   return (
@@ -852,7 +910,7 @@ export function GraphCanvas() {
           onClose={() => setContextMenu(null)}
           onAddNode={handleAddNode}
           onSetStatus={handleSetStatus}
-          onDeleteNode={handleDeleteNode}
+          onDeleteNode={requestDeleteNode}
           onDeleteEdge={handleDeleteEdge}
           onReverseEdge={handleReverseEdge}
         />
@@ -864,6 +922,7 @@ export function GraphCanvas() {
           node={selectedNode}
           onClose={() => setSelectedNode(null)}
           onUpdateNode={handleUpdateNode}
+          onDeleteNode={handleDeleteNode}
         />
       )}
 
@@ -885,6 +944,30 @@ export function GraphCanvas() {
                 className="rounded px-4 py-2 font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
               >
                 Delete All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Single Node Delete Confirmation Modal */}
+      {deleteConfirmNodeId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4">
+            <h3 className="mb-2 text-lg font-semibold text-foreground">Delete Node?</h3>
+            <p className="mb-6 text-sm text-muted-foreground">This action cannot be undone. All connected edges will also be removed.</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirmNodeId(null)}
+                className="rounded px-4 py-2 font-medium text-foreground border border-border hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeleteNode}
+                className="rounded px-4 py-2 font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+              >
+                Delete
               </button>
             </div>
           </div>

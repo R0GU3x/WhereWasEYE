@@ -80,12 +80,16 @@ export function GraphCanvas() {
           data: {
             ...node.data,
             // Map old status types to new ones
-            status: node.data.status === "default" ? "not-started" : 
+            status: node.data.status === "default" ? "not-yet" : 
                     node.data.status === "in-progress" ? "running" :
-                    node.data.status === "success" ? "documented" :
-                    node.data.status === "failed" ? "dead-end" :
+                    node.data.status === "success" ? "pwned" :
+                    node.data.status === "failed" ? "false-positive" :
                     node.data.status === "paused" ? "queued" :
-                    node.data.status || "not-started"
+                    node.data.status === "not-started" ? "not-yet" :
+                    node.data.status === "documented" ? "pwned" :
+                    node.data.status === "dead-end" ? "false-positive" :
+                    node.data.status === "post-exploitation" ? "pwned" :
+                    node.data.status || "not-yet"
           }
         }))
         setNodes(updatedNodes)
@@ -147,7 +151,7 @@ export function GraphCanvas() {
         position,
         data: {
           label: "New Node",
-          status: "not-started" as NodeStatus,
+          status: "not-yet" as NodeStatus,
           entityType: "",
           notes: "",
           createdAt: new Date().toISOString(),
@@ -635,12 +639,16 @@ export function GraphCanvas() {
                 data: {
                   ...node.data,
                   // Map old status types to new ones
-                  status: node.data.status === "default" ? "not-started" : 
+                  status: node.data.status === "default" ? "not-yet" : 
                           node.data.status === "in-progress" ? "running" :
-                          node.data.status === "success" ? "documented" :
-                          node.data.status === "failed" ? "dead-end" :
+                          node.data.status === "success" ? "pwned" :
+                          node.data.status === "failed" ? "false-positive" :
                           node.data.status === "paused" ? "queued" :
-                          node.data.status || "not-started"
+                          node.data.status === "not-started" ? "not-yet" :
+                          node.data.status === "documented" ? "pwned" :
+                          node.data.status === "dead-end" ? "false-positive" :
+                          node.data.status === "post-exploitation" ? "pwned" :
+                          node.data.status || "not-yet"
                 }
               }))
               setNodes(updatedNodes)

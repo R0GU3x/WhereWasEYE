@@ -114,10 +114,10 @@ export function ContextMenu({
         },
         { type: "separator" as const },
         {
-          label: "Not Started",
+          label: "Not Yet",
           icon: "○",
           iconClass: "text-muted-foreground",
-          action: () => onSetStatus(nodeId, "not-started"),
+          action: () => onSetStatus(nodeId, "not-yet"),
         },
         {
           label: "Queued",
@@ -156,22 +156,10 @@ export function ContextMenu({
           action: () => onSetStatus(nodeId, "exploitable"),
         },
         {
-          label: "Post-Exploitation",
+          label: "Pwned",
           icon: "●",
-          iconClass: "text-[var(--node-post-exploitation)]",
-          action: () => onSetStatus(nodeId, "post-exploitation"),
-        },
-        {
-          label: "Dead End",
-          icon: "●",
-          iconClass: "text-[var(--node-dead-end)]",
-          action: () => onSetStatus(nodeId, "dead-end"),
-        },
-        {
-          label: "Documented",
-          icon: "●",
-          iconClass: "text-[var(--node-documented)]",
-          action: () => onSetStatus(nodeId, "documented"),
+          iconClass: "text-[var(--node-pwned)]",
+          action: () => onSetStatus(nodeId, "pwned"),
         },
         { type: "separator" as const },
         {

@@ -13,16 +13,14 @@ interface DetailPanelProps {
 }
 
 const statusLabels: Record<NodeStatus, { label: string; className: string }> = {
-  "not-started": { label: "Not Started", className: "text-muted-foreground" },
+  "not-yet": { label: "Not Yet", className: "text-muted-foreground" },
   "queued": { label: "Queued", className: "text-[var(--node-queued)]" },
   "running": { label: "Running", className: "text-[var(--node-running)]" },
   "needs-review": { label: "Needs Review", className: "text-[var(--node-needs-review)]" },
   "interesting": { label: "Interesting", className: "text-[var(--node-interesting)]" },
   "false-positive": { label: "False Positive", className: "text-[var(--node-false-positive)]" },
   "exploitable": { label: "Exploitable", className: "text-[var(--node-exploitable)]" },
-  "post-exploitation": { label: "Post-Exploitation", className: "text-[var(--node-post-exploitation)]" },
-  "dead-end": { label: "Dead End", className: "text-[var(--node-dead-end)]" },
-  "documented": { label: "Documented", className: "text-[var(--node-documented)]" },
+  "pwned": { label: "Pwned", className: "text-[var(--node-pwned)]" },
 }
 
 export function DetailPanel({ node, onClose, onUpdateNode, onDeleteNode }: DetailPanelProps) {

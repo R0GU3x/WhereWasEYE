@@ -22,6 +22,7 @@ import "@xyflow/react/dist/style.css"
 import { CyberNode, type CyberNodeData, type NodeStatus } from "./cyber-node"
 import { ContextMenu } from "./context-menu"
 import { DetailPanel } from "./detail-panel"
+import { CrossingEdge } from "./crossing-edge"
 
 const nodeTypes = {
   cyber: CyberNode,
@@ -29,6 +30,7 @@ const nodeTypes = {
 
 const edgeTypes = {
   smoothstep: SmoothStepEdge,
+  crossing: CrossingEdge,
 }
 
 const defaultEdgeOptions = {
@@ -71,8 +73,32 @@ export function GraphCanvas() {
     if (savedData) {
       try {
         const { nodes: savedNodes, edges: savedEdges, useTidyEdges: savedTidyEdges } = JSON.parse(savedData)
-        setNodes(savedNodes || [])
-        setEdges(savedEdges || [])
+        
+        // Update nodes with correct status type (handle legacy data)
+        const updatedNodes = (savedNodes || []).map((node: Node<CyberNodeData>) => ({
+          ...node,
+          data: {
+            ...node.data,
+            // Map old status types to new ones
+            status: node.data.status === "default" ? "not-started" : 
+                    node.data.status === "in-progress" ? "running" :
+                    node.data.status === "success" ? "documented" :
+                    node.data.status === "failed" ? "dead-end" :
+                    node.data.status === "paused" ? "queued" :
+                    node.data.status || "not-started"
+          }
+        }))
+        setNodes(updatedNodes)
+        
+        // Update edges with proper type
+        const tidyMode = savedTidyEdges ?? false
+        const updatedEdges = (savedEdges || []).map((edge: Edge) => ({
+          ...edge,
+          type: tidyMode ? "smoothstep" : "crossing",
+          data: { ...edge.data, useSmoothStep: tidyMode },
+        }))
+        setEdges(updatedEdges)
+        
         if (savedTidyEdges !== undefined) {
           setUseTidyEdges(savedTidyEdges)
         }
@@ -104,8 +130,8 @@ export function GraphCanvas() {
     (connection: Connection) => {
       const newEdge = {
         ...connection,
-        type: useTidyEdges ? "smoothstep" : undefined,
-        pathOptions: useTidyEdges ? { borderRadius: 8, offset: 20 } : undefined,
+        type: useTidyEdges ? "smoothstep" : "crossing",
+        data: { useSmoothStep: useTidyEdges },
       }
       setEdges((eds) => addEdge(newEdge, eds))
     },
@@ -121,7 +147,7 @@ export function GraphCanvas() {
         position,
         data: {
           label: "New Node",
-          status: "default" as NodeStatus,
+          status: "not-started" as NodeStatus,
           entityType: "",
           notes: "",
           createdAt: new Date().toISOString(),
@@ -183,8 +209,8 @@ export function GraphCanvas() {
           source: parentId,
           target: newNode.id,
           ...defaultEdgeOptions,
-          type: useTidyEdges ? "smoothstep" : undefined,
-          pathOptions: useTidyEdges ? { borderRadius: 8, offset: 20 } : undefined,
+          type: useTidyEdges ? "smoothstep" : "crossing",
+          data: { useSmoothStep: useTidyEdges },
         }
         setEdges((eds) => [...eds, newEdge])
       }
@@ -287,12 +313,12 @@ export function GraphCanvas() {
     setUseTidyEdges((prev) => {
       const newValue = !prev
       
-      // Update all edges to use smoothstep type or remove the type for default bezier
+      // Update all edges to use smoothstep type or crossing type for bezier with indicators
       setEdges((eds) =>
         eds.map((edge) => ({
           ...edge,
-          type: newValue ? "smoothstep" : undefined,
-          pathOptions: newValue ? { borderRadius: 8, offset: 20 } : undefined,
+          type: newValue ? "smoothstep" : "crossing",
+          data: { ...edge.data, useSmoothStep: newValue },
         }))
       )
       
@@ -603,8 +629,31 @@ export function GraphCanvas() {
           try {
             const data = JSON.parse(event.target?.result as string)
             if (data.nodes && data.edges) {
-              setNodes(data.nodes)
-              setEdges(data.edges)
+              // Update nodes with correct status type (handle legacy data)
+              const updatedNodes = data.nodes.map((node: Node<CyberNodeData>) => ({
+                ...node,
+                data: {
+                  ...node.data,
+                  // Map old status types to new ones
+                  status: node.data.status === "default" ? "not-started" : 
+                          node.data.status === "in-progress" ? "running" :
+                          node.data.status === "success" ? "documented" :
+                          node.data.status === "failed" ? "dead-end" :
+                          node.data.status === "paused" ? "queued" :
+                          node.data.status || "not-started"
+                }
+              }))
+              setNodes(updatedNodes)
+              
+              // Update edges with proper type
+              const tidyMode = data.useTidyEdges ?? false
+              const updatedEdges = data.edges.map((edge: Edge) => ({
+                ...edge,
+                type: tidyMode ? "smoothstep" : "crossing",
+                data: { ...edge.data, useSmoothStep: tidyMode },
+              }))
+              setEdges(updatedEdges)
+              
               if (data.useTidyEdges !== undefined) {
                 setUseTidyEdges(data.useTidyEdges)
               }

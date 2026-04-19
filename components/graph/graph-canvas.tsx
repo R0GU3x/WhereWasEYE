@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useState, useRef, useEffect } from "react"
-import { CircleHelp, X, ChevronDown, ChevronUp } from "lucide-react"
+import { CircleHelp, X, ChevronDown, ChevronUp, Workflow } from "lucide-react"
 import {
   ReactFlow,
   Background,
@@ -15,15 +15,22 @@ import {
   type NodeMouseHandler,
   BackgroundVariant,
   MarkerType,
+  SmoothStepEdge,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 
 import { CyberNode, type CyberNodeData, type NodeStatus } from "./cyber-node"
 import { ContextMenu } from "./context-menu"
 import { DetailPanel } from "./detail-panel"
+import { CrossingEdge } from "./crossing-edge"
 
 const nodeTypes = {
   cyber: CyberNode,
+}
+
+const edgeTypes = {
+  smoothstep: SmoothStepEdge,
+  crossing: CrossingEdge,
 }
 
 const defaultEdgeOptions = {
@@ -56,6 +63,7 @@ export function GraphCanvas() {
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [bulkDeleteModal, setBulkDeleteModal] = useState(false)
   const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(null)
+  const [useTidyEdges, setUseTidyEdges] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
 
@@ -64,9 +72,40 @@ export function GraphCanvas() {
     const savedData = localStorage.getItem("cyber-graph-data")
     if (savedData) {
       try {
-        const { nodes: savedNodes, edges: savedEdges } = JSON.parse(savedData)
-        setNodes(savedNodes || [])
-        setEdges(savedEdges || [])
+        const { nodes: savedNodes, edges: savedEdges, useTidyEdges: savedTidyEdges } = JSON.parse(savedData)
+        
+        // Update nodes with correct status type (handle legacy data)
+        const updatedNodes = (savedNodes || []).map((node: Node<CyberNodeData>) => ({
+          ...node,
+          data: {
+            ...node.data,
+            // Map old status types to new ones
+            status: node.data.status === "default" ? "not-yet" : 
+                    node.data.status === "in-progress" ? "running" :
+                    node.data.status === "success" ? "pwned" :
+                    node.data.status === "failed" ? "false-positive" :
+                    node.data.status === "paused" ? "queued" :
+                    node.data.status === "not-started" ? "not-yet" :
+                    node.data.status === "documented" ? "pwned" :
+                    node.data.status === "dead-end" ? "false-positive" :
+                    node.data.status === "post-exploitation" ? "pwned" :
+                    node.data.status || "not-yet"
+          }
+        }))
+        setNodes(updatedNodes)
+        
+        // Update edges with proper type
+        const tidyMode = savedTidyEdges ?? false
+        const updatedEdges = (savedEdges || []).map((edge: Edge) => ({
+          ...edge,
+          type: tidyMode ? "smoothstep" : "crossing",
+          data: { ...edge.data, useSmoothStep: tidyMode },
+        }))
+        setEdges(updatedEdges)
+        
+        if (savedTidyEdges !== undefined) {
+          setUseTidyEdges(savedTidyEdges)
+        }
       } catch {
         // Invalid data, start fresh
       }
@@ -87,15 +126,20 @@ export function GraphCanvas() {
   // Auto-save to localStorage
   useEffect(() => {
     if (nodes.length > 0 || edges.length > 0) {
-      localStorage.setItem("cyber-graph-data", JSON.stringify({ nodes, edges }))
+      localStorage.setItem("cyber-graph-data", JSON.stringify({ nodes, edges, useTidyEdges }))
     }
-  }, [nodes, edges])
+  }, [nodes, edges, useTidyEdges])
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => addEdge(connection, eds))
+      const newEdge = {
+        ...connection,
+        type: useTidyEdges ? "smoothstep" : "crossing",
+        data: { useSmoothStep: useTidyEdges },
+      }
+      setEdges((eds) => addEdge(newEdge, eds))
     },
-    [setEdges]
+    [setEdges, useTidyEdges]
   )
 
   const createNode = useCallback(
@@ -107,7 +151,7 @@ export function GraphCanvas() {
         position,
         data: {
           label: "New Node",
-          status: "default" as NodeStatus,
+          status: "not-yet" as NodeStatus,
           entityType: "",
           notes: "",
           createdAt: new Date().toISOString(),
@@ -169,11 +213,13 @@ export function GraphCanvas() {
           source: parentId,
           target: newNode.id,
           ...defaultEdgeOptions,
+          type: useTidyEdges ? "smoothstep" : "crossing",
+          data: { useSmoothStep: useTidyEdges },
         }
         setEdges((eds) => [...eds, newEdge])
       }
     },
-    [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges]
+    [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges, useTidyEdges]
   )
 
   const handleSetStatus = useCallback(
@@ -266,6 +312,24 @@ export function GraphCanvas() {
     [setEdges]
   )
 
+  // Toggle tidy edges mode - converts edges to orthogonal (circuit-style) routing
+  const handleTidyEdges = useCallback(() => {
+    setUseTidyEdges((prev) => {
+      const newValue = !prev
+      
+      // Update all edges to use smoothstep type or crossing type for bezier with indicators
+      setEdges((eds) =>
+        eds.map((edge) => ({
+          ...edge,
+          type: newValue ? "smoothstep" : "crossing",
+          data: { ...edge.data, useSmoothStep: newValue },
+        }))
+      )
+      
+      return newValue
+    })
+  }, [setEdges])
+
   const onNodeContextMenu: NodeMouseHandler = useCallback(
     (event, node) => {
       event.preventDefault()
@@ -343,10 +407,16 @@ export function GraphCanvas() {
   )
 
   const onPaneClick = useCallback(() => {
-    setSelectedNode(null)
-    setSelectedNodes(new Set())
+    // Only clear selection if not drawing a selection box
+    if (!isDrawingSelectBox) {
+      setSelectedNode(null)
+      // Only clear multi-selection when NOT in select mode (prevent accidental clearing)
+      if (!isSelectMode) {
+        setSelectedNodes(new Set())
+      }
+    }
     setContextMenu(null)
-  }, [])
+  }, [isDrawingSelectBox, isSelectMode])
 
   // Handle pane mouse down for drag-to-select (only in selection mode with Ctrl)
   const handlePaneMouseDown = useCallback((e: React.MouseEvent) => {
@@ -454,13 +524,20 @@ export function GraphCanvas() {
         selectedNodeIds.forEach((id) => newSet.add(id))
         return newSet
       })
+      // Also update nodes to reflect selection state
+      setNodes((nds) =>
+        nds.map((node) => ({
+          ...node,
+          selected: selectedNodeIds.includes(node.id) || selectedNodes.has(node.id),
+        }))
+      )
     }
     
     setSelectedNode(null)
     setIsDrawingSelectBox(false)
     setSelectBox(null)
     setSelectStart(null)
-  }, [isDrawingSelectBox, selectBox, nodes, reactFlowInstance])
+  }, [isDrawingSelectBox, selectBox, nodes, reactFlowInstance, selectedNodes, setNodes])
 
   // Custom scroll and zoom handler
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -511,13 +588,20 @@ export function GraphCanvas() {
       const target = e.target as HTMLElement
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
       
-      // Delete for selected nodes (only if not in input) - show confirmation
-      if (e.key === "Delete" && !isInput) {
+      // Delete/Backspace for selected nodes (only if not in input) - show confirmation
+      if ((e.key === "Delete" || e.key === "Backspace") && !isInput) {
+        e.preventDefault()
         if (selectedNodes.size > 0) {
           setBulkDeleteModal(true)
         } else if (selectedNode) {
           requestDeleteNode(selectedNode.id)
         }
+      }
+      // Escape clears selection
+      if (e.key === "Escape" && !isInput) {
+        setSelectedNode(null)
+        setSelectedNodes(new Set())
+        setContextMenu(null)
       }
       // Spacebar toggles to selection mode (default is pan mode)
       if (e.code === "Space" && !isSelectMode && !isInput) {
@@ -546,7 +630,7 @@ export function GraphCanvas() {
 
   // Export function
   const handleExport = useCallback(() => {
-    const data = JSON.stringify({ nodes, edges }, null, 2)
+    const data = JSON.stringify({ nodes, edges, useTidyEdges }, null, 2)
     const blob = new Blob([data], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -554,7 +638,7 @@ export function GraphCanvas() {
     a.download = `cyber-map-${new Date().toISOString().split("T")[0]}.json`
     a.click()
     URL.revokeObjectURL(url)
-  }, [nodes, edges])
+  }, [nodes, edges, useTidyEdges])
 
   // Import function
   const handleImport = useCallback(() => {
@@ -569,8 +653,38 @@ export function GraphCanvas() {
           try {
             const data = JSON.parse(event.target?.result as string)
             if (data.nodes && data.edges) {
-              setNodes(data.nodes)
-              setEdges(data.edges)
+              // Update nodes with correct status type (handle legacy data)
+              const updatedNodes = data.nodes.map((node: Node<CyberNodeData>) => ({
+                ...node,
+                data: {
+                  ...node.data,
+                  // Map old status types to new ones
+                  status: node.data.status === "default" ? "not-yet" : 
+                          node.data.status === "in-progress" ? "running" :
+                          node.data.status === "success" ? "pwned" :
+                          node.data.status === "failed" ? "false-positive" :
+                          node.data.status === "paused" ? "queued" :
+                          node.data.status === "not-started" ? "not-yet" :
+                          node.data.status === "documented" ? "pwned" :
+                          node.data.status === "dead-end" ? "false-positive" :
+                          node.data.status === "post-exploitation" ? "pwned" :
+                          node.data.status || "not-yet"
+                }
+              }))
+              setNodes(updatedNodes)
+              
+              // Update edges with proper type
+              const tidyMode = data.useTidyEdges ?? false
+              const updatedEdges = data.edges.map((edge: Edge) => ({
+                ...edge,
+                type: tidyMode ? "smoothstep" : "crossing",
+                data: { ...edge.data, useSmoothStep: tidyMode },
+              }))
+              setEdges(updatedEdges)
+              
+              if (data.useTidyEdges !== undefined) {
+                setUseTidyEdges(data.useTidyEdges)
+              }
             }
           } catch {
             console.error("Invalid JSON file")
@@ -618,12 +732,13 @@ export function GraphCanvas() {
       {/* Drag-to-select box */}
       {selectBox && (
         <div
-          className="pointer-events-none absolute border-2 border-primary/50 bg-primary/5 z-30"
+          className="pointer-events-none absolute z-50 rounded border-2 border-dashed border-primary bg-primary/10"
           style={{
             left: `${selectBox.x}px`,
             top: `${selectBox.y}px`,
             width: `${selectBox.width}px`,
             height: `${selectBox.height}px`,
+            boxShadow: "0 0 20px var(--glow-cyan), inset 0 0 10px var(--glow-cyan)",
           }}
         />
       )}
@@ -645,6 +760,7 @@ export function GraphCanvas() {
         onNodeDoubleClick={onNodeDoubleClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
         panOnDrag={!isSelectMode}
         selectionOnDrag={false}
@@ -729,7 +845,11 @@ export function GraphCanvas() {
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span><strong>Delete key:</strong> remove selected nodes</span>
+              <span><strong>Delete/Backspace:</strong> remove selected nodes</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span><strong>Escape:</strong> clear selection</span>
             </li>
           </ul>
         </div>
@@ -737,36 +857,42 @@ export function GraphCanvas() {
 
       {/* Bulk Operations Toolbar */}
       {selectedNodes.size > 0 && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-card/95 border border-border rounded-lg p-3 backdrop-blur-sm flex items-center gap-2">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-card/95 border border-border rounded-lg p-3 backdrop-blur-sm flex items-center gap-2 flex-wrap justify-center max-w-3xl">
           <span className="font-mono text-sm text-muted-foreground">{selectedNodes.size} selected</span>
           <div className="h-4 w-px bg-border" />
           <button
-            onClick={() => handleBulkStatusUpdate("in-progress")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-in-progress)]/10 text-[var(--node-in-progress)] hover:bg-[var(--node-in-progress)]/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("queued")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-queued)]/10 text-[var(--node-queued)] hover:bg-[var(--node-queued)]/20 transition-colors"
           >
-            In Progress
+            Queued
           </button>
           <button
-            onClick={() => handleBulkStatusUpdate("paused")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-paused)]/10 text-[var(--node-paused)] hover:bg-[var(--node-paused)]/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("running")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-running)]/10 text-[var(--node-running)] hover:bg-[var(--node-running)]/20 transition-colors"
           >
-            Paused
+            Running
           </button>
           <button
-            onClick={() => handleBulkStatusUpdate("success")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-success)]/10 text-[var(--node-success)] hover:bg-[var(--node-success)]/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("interesting")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-interesting)]/10 text-[var(--node-interesting)] hover:bg-[var(--node-interesting)]/20 transition-colors"
           >
-            Success
+            Interesting
           </button>
           <button
-            onClick={() => handleBulkStatusUpdate("failed")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-failed)]/10 text-[var(--node-failed)] hover:bg-[var(--node-failed)]/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("exploitable")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-exploitable)]/10 text-[var(--node-exploitable)] hover:bg-[var(--node-exploitable)]/20 transition-colors"
           >
-            Failed
+            Exploitable
           </button>
           <button
-            onClick={() => handleBulkStatusUpdate("default")}
-            className="rounded px-3 py-1 text-sm font-medium bg-muted/10 text-muted-foreground hover:bg-muted/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("pwned")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-pwned)]/10 text-[var(--node-pwned)] hover:bg-[var(--node-pwned)]/20 transition-colors"
+          >
+            Pwned
+          </button>
+          <button
+            onClick={() => handleBulkStatusUpdate("not-yet")}
+            className="rounded px-3 py-1 text-sm font-medium bg-muted/20 text-muted-foreground hover:bg-muted/30 transition-colors"
           >
             Reset
           </button>
@@ -845,21 +971,29 @@ export function GraphCanvas() {
                     {/* Render nodes */}
                     {nodes.map((node) => {
                       const data = node.data as CyberNodeData
-                      let color = "bg-muted-foreground/50"
-                      if (data.status === "in-progress") color = "bg-blue-400"
-                      if (data.status === "success") color = "bg-green-400"
-                      if (data.status === "failed") color = "bg-red-400"
-                      
                       const pos = nodePositions.get(node.id)!
+                      
+                      // Map status to CSS variable colors
+                      const statusColorMap: Record<NodeStatus, string> = {
+                        "not-yet": "var(--node-not-yet)",
+                        "queued": "var(--node-queued)",
+                        "running": "var(--node-running)",
+                        "needs-review": "var(--node-needs-review)",
+                        "interesting": "var(--node-interesting)",
+                        "false-positive": "var(--node-false-positive)",
+                        "exploitable": "var(--node-exploitable)",
+                        "pwned": "var(--node-pwned)",
+                      }
                       
                       return (
                         <div
                           key={node.id}
-                          className={`absolute h-1.5 w-1.5 rounded-full ${color}`}
+                          className="absolute h-1.5 w-1.5 rounded-full"
                           style={{ 
                             left: `${pos.left}%`, 
                             top: `${pos.top}%`,
-                            transform: 'translate(-50%, -50%)'
+                            transform: 'translate(-50%, -50%)',
+                            backgroundColor: statusColorMap[data.status] || "var(--muted-foreground)",
                           }}
                         />
                       )
@@ -892,8 +1026,20 @@ export function GraphCanvas() {
         </button>
       </div>
 
-      {/* Import/Export buttons */}
+      {/* Import/Export/Tidy buttons */}
       <div className="absolute right-4 bottom-4 z-10 flex gap-2">
+        <button
+          onClick={handleTidyEdges}
+          className={`flex items-center gap-1.5 rounded border px-3 py-1.5 font-mono text-xs backdrop-blur-sm transition-colors ${
+            useTidyEdges
+              ? "border-primary bg-primary/20 text-primary"
+              : "border-border bg-card/80 text-foreground hover:bg-muted"
+          }`}
+          title={useTidyEdges ? "Switch to curved edges" : "Tidy edges (circuit-style)"}
+        >
+          <Workflow size={14} />
+          Tidy
+        </button>
         <button
           onClick={handleImport}
           className="rounded border border-border bg-card/80 px-3 py-1.5 font-mono text-xs text-foreground backdrop-blur-sm transition-colors hover:bg-muted"

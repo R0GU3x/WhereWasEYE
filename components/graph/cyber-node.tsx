@@ -4,7 +4,15 @@ import { memo } from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
 import { cn } from "@/lib/utils"
 
-export type NodeStatus = "default" | "in-progress" | "success" | "failed" | "paused"
+export type NodeStatus = 
+  | "not-yet"
+  | "queued"
+  | "running"
+  | "needs-review"
+  | "interesting"
+  | "false-positive"
+  | "exploitable"
+  | "pwned"
 
 export interface CyberNodeData extends Record<string, unknown> {
   label: string
@@ -15,19 +23,25 @@ export interface CyberNodeData extends Record<string, unknown> {
 }
 
 const statusStyles: Record<NodeStatus, string> = {
-  default: "border-border bg-card shadow-[0_0_15px_rgba(100,100,120,0.15)]",
-  "in-progress": "border-[var(--node-in-progress)] bg-card shadow-[0_0_20px_rgba(100,150,255,0.3)]",
-  success: "border-[var(--node-success)] bg-card shadow-[0_0_20px_rgba(100,220,150,0.3)]",
-  failed: "border-[var(--node-failed)] bg-card shadow-[0_0_20px_rgba(255,100,100,0.3)]",
-  paused: "border-[var(--node-paused)] bg-card shadow-[0_0_20px_rgba(240,200,100,0.3)]",
+  "not-yet": "border-border bg-card shadow-[0_0_15px_rgba(100,100,120,0.15)]",
+  "queued": "border-[var(--node-queued)] bg-card shadow-[0_0_20px_rgba(255,255,255,0.25)]",
+  "running": "border-[var(--node-running)] bg-card shadow-[0_0_20px_rgba(100,150,255,0.3)]",
+  "needs-review": "border-[var(--node-needs-review)] bg-card shadow-[0_0_20px_rgba(200,150,255,0.3)]",
+  "interesting": "border-[var(--node-interesting)] bg-card shadow-[0_0_20px_rgba(255,165,0,0.3)]",
+  "false-positive": "border-[var(--node-false-positive)] bg-card shadow-[0_0_20px_rgba(139,90,43,0.25)]",
+  "exploitable": "border-[var(--node-exploitable)] bg-card shadow-[0_0_25px_rgba(255,50,50,0.4)]",
+  "pwned": "border-[var(--node-pwned)] bg-card shadow-[0_0_20px_rgba(100,220,150,0.3)]",
 }
 
 const statusIndicators: Record<NodeStatus, string> = {
-  default: "bg-muted-foreground",
-  "in-progress": "bg-[var(--node-in-progress)]",
-  success: "bg-[var(--node-success)]",
-  failed: "bg-[var(--node-failed)]",
-  paused: "bg-[var(--node-paused)]",
+  "not-yet": "bg-muted-foreground",
+  "queued": "bg-[var(--node-queued)]",
+  "running": "bg-[var(--node-running)] animate-pulse",
+  "needs-review": "bg-[var(--node-needs-review)]",
+  "interesting": "bg-[var(--node-interesting)]",
+  "false-positive": "bg-[var(--node-false-positive)]",
+  "exploitable": "bg-[var(--node-exploitable)] animate-pulse",
+  "pwned": "bg-[var(--node-pwned)]",
 }
 
 function CyberNodeComponent({ data, selected }: NodeProps) {

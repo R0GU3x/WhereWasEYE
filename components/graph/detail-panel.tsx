@@ -13,11 +13,14 @@ interface DetailPanelProps {
 }
 
 const statusLabels: Record<NodeStatus, { label: string; className: string }> = {
-  default: { label: "Default", className: "text-muted-foreground" },
-  "in-progress": { label: "In Progress", className: "text-[var(--node-in-progress)]" },
-  paused: { label: "Paused", className: "text-[var(--node-paused)]" },
-  success: { label: "Success", className: "text-[var(--node-success)]" },
-  failed: { label: "Failed", className: "text-[var(--node-failed)]" },
+  "not-yet": { label: "Not Yet", className: "text-muted-foreground" },
+  "queued": { label: "Queued", className: "text-[var(--node-queued)]" },
+  "running": { label: "Running", className: "text-[var(--node-running)]" },
+  "needs-review": { label: "Needs Review", className: "text-[var(--node-needs-review)]" },
+  "interesting": { label: "Interesting", className: "text-[var(--node-interesting)]" },
+  "false-positive": { label: "False Positive", className: "text-[var(--node-false-positive)]" },
+  "exploitable": { label: "Exploitable", className: "text-[var(--node-exploitable)]" },
+  "pwned": { label: "Pwned", className: "text-[var(--node-pwned)]" },
 }
 
 export function DetailPanel({ node, onClose, onUpdateNode, onDeleteNode }: DetailPanelProps) {
@@ -56,8 +59,8 @@ export function DetailPanel({ node, onClose, onUpdateNode, onDeleteNode }: Detai
             onChange={(e) => onUpdateNode(node.id, { label: e.target.value })}
             className="bg-transparent font-mono text-lg font-semibold text-foreground outline-none focus:border-b focus:border-primary"
           />
-          <div className={cn("mt-1 text-sm", statusLabels[data.status].className)}>
-            {statusLabels[data.status].label}
+          <div className={cn("mt-1 text-sm", statusLabels[data.status]?.className || "text-muted-foreground")}>
+            {statusLabels[data.status]?.label || data.status || "Unknown"}
           </div>
         </div>
         <button

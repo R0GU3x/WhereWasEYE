@@ -74,24 +74,24 @@ export function GraphCanvas() {
     if (savedData) {
       try {
         const { nodes: savedNodes, edges: savedEdges, useTidyEdges: savedTidyEdges } = JSON.parse(savedData)
-        
+
         // Update nodes with correct status type (handle legacy data)
         const updatedNodes = (savedNodes || []).map((node: Node<CyberNodeData>) => ({
           ...node,
           data: {
             ...node.data,
-            status: node.data.status === "not-yet" ? "default" : 
-                    node.data.status === "running" ? "in-progress" :
-                    node.data.status === "queued" ? "pending" :
-                    node.data.status === "pwned" ? "success" :
+            status: node.data.status === "not-yet" ? "default" :
+              node.data.status === "running" ? "in-progress" :
+                node.data.status === "queued" ? "pending" :
+                  node.data.status === "pwned" ? "success" :
                     node.data.status === "false-positive" ? "failed" :
-                    node.data.status === "exploitable" ? "failed" :
-                    node.data.status === "needs-review" ? "pending" :
-                    node.data.status || "default"
+                      node.data.status === "exploitable" ? "failed" :
+                        node.data.status === "needs-review" ? "pending" :
+                          node.data.status || "default"
           }
         }))
         setNodes(updatedNodes)
-        
+
         // Update edges with proper type
         const tidyMode = savedTidyEdges ?? false
         const updatedEdges = (savedEdges || []).map((edge: Edge) => ({
@@ -100,7 +100,7 @@ export function GraphCanvas() {
           data: { ...edge.data, useSmoothStep: tidyMode },
         }))
         setEdges(updatedEdges)
-        
+
         if (savedTidyEdges !== undefined) {
           setUseTidyEdges(savedTidyEdges)
         }
@@ -169,17 +169,17 @@ export function GraphCanvas() {
           const baseOffsetY = 120
           const spreadAngle = 30
           const maxSpread = 60
-          
+
           const totalChildren = existingChildren + 1
           let angle = 0
           if (totalChildren > 1) {
             const step = Math.min(spreadAngle, (maxSpread * 2) / (totalChildren - 1))
             angle = -maxSpread + (existingChildren * step) + (step / 2)
           }
-          
+
           const radians = (angle * Math.PI) / 180
           const xOffset = Math.sin(radians) * baseOffsetY
-          
+
           position = {
             x: parentNode.position.x + xOffset,
             y: parentNode.position.y + baseOffsetY,
@@ -492,7 +492,7 @@ export function GraphCanvas() {
         }))
       )
     }
-    
+
     setSelectedNode(null)
     setIsDrawingSelectBox(false)
     setSelectBox(null)
@@ -503,20 +503,22 @@ export function GraphCanvas() {
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (!reactFlowInstance) return
 
-    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    // Shift + scroll: horizontal panning
+    if (e.shiftKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault()
       const { x, y } = reactFlowInstance.getViewport()
       reactFlowInstance.setViewport({
-        x: x,
-        y: y - (e.deltaY > 0 ? 50 : -50),
+        x: x - (e.deltaY > 0 ? 50 : -50),
+        y: y,
         zoom: reactFlowInstance.getZoom(),
       })
+    // Ctrl/Cmd + scroll: zoom
     } else if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
       const currentZoom = reactFlowInstance.getZoom()
       const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1
       const newZoom = Math.max(0.1, Math.min(currentZoom * zoomDelta, 4))
-      
+
       const rect = reactFlowWrapper.current?.getBoundingClientRect()
       if (rect) {
         const cursorX = e.clientX - rect.left
@@ -524,6 +526,15 @@ export function GraphCanvas() {
         const flowPos = reactFlowInstance.screenToFlowPosition({ x: cursorX, y: cursorY })
         reactFlowInstance.setCenter(flowPos.x, flowPos.y, { zoom: newZoom, duration: 0 })
       }
+    // Normal scroll: vertical panning
+    } else if (!e.shiftKey) {
+      e.preventDefault()
+      const { x, y } = reactFlowInstance.getViewport()
+      reactFlowInstance.setViewport({
+        x: x,
+        y: y - (e.deltaY > 0 ? 50 : -50),
+        zoom: reactFlowInstance.getZoom(),
+      })
     }
   }, [reactFlowInstance])
 
@@ -532,12 +543,12 @@ export function GraphCanvas() {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
-      
+
       // Track shift key
       if (e.key === "Shift") {
         setIsShiftHeld(true)
       }
-      
+
       // Delete/Backspace for selected nodes
       if ((e.key === "Delete" || e.key === "Backspace") && !isInput) {
         e.preventDefault()
@@ -547,7 +558,7 @@ export function GraphCanvas() {
           requestDeleteNode(selectedNode.id)
         }
       }
-      
+
       // Escape clears selection
       if (e.key === "Escape" && !isInput) {
         setSelectedNode(null)
@@ -602,18 +613,18 @@ export function GraphCanvas() {
                 ...node,
                 data: {
                   ...node.data,
-                  status: node.data.status === "not-yet" ? "default" : 
-                          node.data.status === "running" ? "in-progress" :
-                          node.data.status === "queued" ? "pending" :
-                          node.data.status === "pwned" ? "success" :
+                  status: node.data.status === "not-yet" ? "default" :
+                    node.data.status === "running" ? "in-progress" :
+                      node.data.status === "queued" ? "pending" :
+                        node.data.status === "pwned" ? "success" :
                           node.data.status === "false-positive" ? "failed" :
-                          node.data.status === "exploitable" ? "failed" :
-                          node.data.status === "needs-review" ? "pending" :
-                          node.data.status || "default"
+                            node.data.status === "exploitable" ? "failed" :
+                              node.data.status === "needs-review" ? "pending" :
+                                node.data.status || "default"
                 }
               }))
               setNodes(updatedNodes)
-              
+
               const tidyMode = data.useTidyEdges ?? false
               const updatedEdges = data.edges.map((edge: Edge) => ({
                 ...edge,
@@ -621,7 +632,7 @@ export function GraphCanvas() {
                 data: { ...edge.data, useSmoothStep: tidyMode },
               }))
               setEdges(updatedEdges)
-              
+
               if (data.useTidyEdges !== undefined) {
                 setUseTidyEdges(data.useTidyEdges)
               }
@@ -680,9 +691,9 @@ export function GraphCanvas() {
   const isCanvasEmpty = nodes.length === 0
 
   return (
-    <div 
-      ref={reactFlowWrapper} 
-      className="relative h-screen w-screen" 
+    <div
+      ref={reactFlowWrapper}
+      className="relative h-screen w-screen"
       onMouseDown={handlePaneMouseDown}
       onMouseMove={handlePaneMouseMove}
       onMouseUp={handlePaneMouseUp}
@@ -709,36 +720,52 @@ export function GraphCanvas() {
           <div className="flex flex-col items-center gap-6 opacity-30">
             {/* ASCII Art Style Robot/Hacker */}
             <pre className="font-mono text-xs text-muted-foreground leading-none select-none">
-{`
-        ╭──────────────────────────────────╮
-        │   ┌─────────────────────────┐   │
-        │   │  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │   │
-        │   │  ▓  ╔══╗      ╔══╗  ▓   │   │
-        │   │  ▓  ║██║      ║██║  ▓   │   │
-        │   │  ▓  ╚══╝      ╚══╝  ▓   │   │
-        │   │  ▓                  ▓   │   │
-        │   │  ▓    ╔════════╗    ▓   │   │
-        │   │  ▓    ╚════════╝    ▓   │   │
-        │   │  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │   │
-        │   └─────────────────────────┘   │
-        │          ║      ║               │
-        │     ╔════╩══════╩════╗          │
-        │     ║  ░░░░░░░░░░░░  ║          │
-        │     ║  ░ AWAITING ░  ║          │
-        │     ║  ░  INPUT   ░  ║          │
-        │     ║  ░░░░░░░░░░░░  ║          │
-        │     ╚════════════════╝          │
-        ╰──────────────────────────────────╯
+              {`
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⢰⠂⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠉⣷⠀⠀⢸⡄⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡄⠀⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡸⣞⡇⠀⠀⠀⣼⡿⠀⠀⠀⠀⠉⠉⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣧⢿⣽⡀⠀⠉⠛⠁⠀⣰⣾⠿⠿⣦⡀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣞⡿⣞⡅⠀⠀⠀⠀⠘⠏⠓⠒⠒⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣟⢾⣽⢫⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⢤⣶⡻⣞⣿⣺⢯⣽⣳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⢠⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣤⣿⣽⣻⢾⣽⣷⣾⣽⣻⣞⣷⣳⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣶⣄⡀⠀⠀⠀⣀⣲⣴⢶⣞⡿⣽⣞⡷⣯⢿⡽⣞⣿⠟⠋⠁⠉⠈⠳⣟⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⢶⣾⣿⡽⣯⣟⡾⣽⡷⣯⣟⡽⡾⣽⡯⠁⠀⠀⠀⠀⠀⠀⢮⣭⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⢞⣿⣿⢯⡿⣿⣯⣟⣷⣯⢿⣳⣟⡷⣽⣼⣻⣽⠀⠀⠀⠀⠀⠀⠀⢀⣼⡯⡗⠋⠤⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⣿⣿⣯⣽⣾⣿⣾⣗⡿⣯⡷⣯⣟⡷⣞⣼⣿⣀⠀⠀⠀⠀⢀⣠⡿⣏⡗⠈⠐⠈⠅⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⠛⠏⠉⠉⠽⢟⢿⣿⣿⣿⣿⣷⣻⢾⡽⣞⡷⠄⡹⣶⢿⣻⢿⣻⡽⢯⣼⢦⠶⠁⠈⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣯⠇⠀⠀⠀⠀⠀⠁⣽⣿⣿⣿⣷⣯⣿⣽⣛⡦⠀⠀⢩⣿⣹⢯⣷⢻⣟⠺⢣⡖⣘⠤⠓⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢈⣿⡃⠁⠀⠀⠀⢀⣤⣾⣟⢿⣻⣿⣿⣟⡾⣽⡳⠄⠎⢳⣯⢯⣟⡾⢯⣞⣯⣓⠉⢀⠀⠀⡄⢢⡀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣷⣷⣶⣳⣶⣺⣿⣿⣳⢯⣟⣿⣿⣳⢯⠛⠅⠃⠀⠀⣴⣿⡿⣬⢶⠾⠙⣊⣥⠾⡒⠊⢁⢠⠣⣌⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢺⡽⣾⡽⣯⣟⣿⡿⣯⣿⣿⣾⢿⣿⠳⢏⣈⢠⠀⠀⣰⢿⡿⣽⣉⡶⠌⠋⠉⣀⡀⠁⠀⠀⠀⣘⡐⣂⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣽⣳⣟⣳⣟⣾⣽⣿⣿⣿⣿⣿⣦⣜⡻⡽⠆⠧⣴⡟⣯⢟⡳⣭⠲⠄⠐⠀⠀⠀⠈⠁⠉⠑⢊⡕⢃⠄⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⣿⣾⣿⣯⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⣾⢧⠀⠹⠾⡵⡞⡽⢢⣃⠐⠀⠀⠄⡐⠀⠀⠀⡘⢦⠘⣌⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠐⠹⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢯⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠒⡈⠀⡀⠄⡑⠢⣉⠴⣈⣆
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢯⣏⡴⣶⣵⣢⢤⢠⡀⡄⢠⠐⡰⢌⡱⠀⡁⡀⠆⡥⠆⡥⣛⡽⣾
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠔⠉⠀⠀⢽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣼⣻⢷⣯⡽⣞⣷⣻⡼⣡⢋⡔⠣⠜⡐⢐⠠⡓⣤⣙⣲⣽⣻⢷
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡿⣽⣞⣷⣻⡴⣣⢜⡱⣊⡕⣊⠠⡙⡰⣭⢷⣯⣿⢿
+                                                        
 
-           > Right-click to add a node
-           > Shift + Drag to select
-           > Let's map some targets...
+  /$$$$$$                     /$$      /$$ /$$   /$$ /$$$$$$$$ /$$$$$$$  /$$$$$$$$       /$$      /$$  /$$$$$$   /$$$$$$        /$$$$$$        /$$$$ 
+ /$$__  $$                   | $$  /$ | $$| $$  | $$| $$_____/| $$__  $$| $$_____/      | $$  /$ | $$ /$$__  $$ /$$__  $$      |_  $$_/       /$$  $$
+| $$  \__/  /$$$$$$          | $$ /$$$| $$| $$  | $$| $$      | $$  \ $$| $$            | $$ /$$$| $$| $$  \ $$| $$  \__/        | $$        |__/\ $$
+|  $$$$$$  /$$__  $$         | $$/$$ $$ $$| $$$$$$$$| $$$$$   | $$$$$$$/| $$$$$         | $$/$$ $$ $$| $$$$$$$$|  $$$$$$         | $$            /$$/
+ \____  $$| $$  \ $$         | $$$$_  $$$$| $$__  $$| $$__/   | $$__  $$| $$__/         | $$$$_  $$$$| $$__  $$ \____  $$        | $$           /$$/ 
+ /$$  \ $$| $$  | $$         | $$$/ \  $$$| $$  | $$| $$      | $$  \ $$| $$            | $$$/ \  $$$| $$  | $$ /$$  \ $$        | $$          |__/  
+|  $$$$$$/|  $$$$$$//$$      | $$/   \  $$| $$  | $$| $$$$$$$$| $$  | $$| $$$$$$$$      | $$/   \  $$| $$  | $$|  $$$$$$/       /$$$$$$         /$$  
+ \______/  \______/| $/      |__/     \__/|__/  |__/|________/|__/  |__/|________/      |__/     \__/|__/  |__/ \______/       |______/        |__/  
+                   |_/                                                                                                                               
+                                                                                                                                                     
+                                                                                                                                                     
+
 `}
             </pre>
           </div>
         </div>
       )}
-      
+
       <ReactFlow
         nodes={nodes.map((node) => ({
           ...node,
@@ -781,8 +808,8 @@ export function GraphCanvas() {
           color="var(--border)"
           className="opacity-10"
         />
-        <Controls 
-          className="!absolute !right-4 !bottom-16 !left-auto !border-border !bg-card/80 !backdrop-blur-sm [&>button]:!border-border [&>button]:!bg-transparent [&>button]:!fill-muted-foreground [&>button:hover]:!bg-primary/20 [&>button:hover]:!fill-primary" 
+        <Controls
+          className="!absolute !right-4 !bottom-16 !left-auto !border-border !bg-card/80 !backdrop-blur-sm [&>button]:!border-border [&>button]:!bg-transparent [&>button]:!fill-muted-foreground [&>button:hover]:!bg-primary/20 [&>button:hover]:!fill-primary"
           position="bottom-right"
         />
       </ReactFlow>
@@ -795,14 +822,13 @@ export function GraphCanvas() {
         >
           {showHelp ? <X size={18} /> : <CircleHelp size={18} />}
         </button>
-        
+
         {/* Help Popup */}
         <div
-          className={`absolute bottom-14 left-0 w-72 origin-bottom-left rounded-lg border border-border bg-card/95 p-4 backdrop-blur-md transition-all duration-300 ease-out ${
-            showHelp
-              ? "scale-100 opacity-100 translate-y-0"
-              : "scale-95 opacity-0 translate-y-2 pointer-events-none"
-          }`}
+          className={`absolute bottom-14 left-0 w-72 origin-bottom-left rounded-lg border border-border bg-card/95 p-4 backdrop-blur-md transition-all duration-300 ease-out ${showHelp
+            ? "scale-100 opacity-100 translate-y-0"
+            : "scale-95 opacity-0 translate-y-2 pointer-events-none"
+            }`}
         >
           <h4 className="mb-3 font-mono text-sm font-semibold text-foreground">Quick Guide</h4>
           <ul className="space-y-2 font-mono text-xs text-muted-foreground">
@@ -825,6 +851,10 @@ export function GraphCanvas() {
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
               <span><strong>Scroll:</strong> pan up/down</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span><strong>Shift + Scroll:</strong> pan left/right</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
@@ -896,35 +926,34 @@ export function GraphCanvas() {
       {/* Minimap Container */}
       <div className="absolute right-4 top-4 z-20">
         <div
-          className={`overflow-hidden rounded-lg border border-border bg-card/80 backdrop-blur-sm transition-all duration-300 ease-out ${
-            minimapExpanded ? "h-24 w-36 opacity-60 hover:opacity-90" : "h-0 w-36 opacity-0 border-transparent"
-          }`}
+          className={`overflow-hidden rounded-lg border border-border bg-card/80 backdrop-blur-sm transition-all duration-300 ease-out ${minimapExpanded ? "h-24 w-36 opacity-60 hover:opacity-90" : "h-0 w-36 opacity-0 border-transparent"
+            }`}
         >
           <div className="h-full w-full p-1">
             <div className="relative h-full w-full rounded bg-background/50 overflow-hidden">
               {(() => {
                 if (nodes.length === 0) return null
-                
+
                 const xs = nodes.map(n => n.position.x)
                 const ys = nodes.map(n => n.position.y)
                 const minX = Math.min(...xs)
                 const maxX = Math.max(...xs)
                 const minY = Math.min(...ys)
                 const maxY = Math.max(...ys)
-                
+
                 const padding = 50
                 const rangeX = Math.max(maxX - minX + padding * 2, 200)
                 const rangeY = Math.max(maxY - minY + padding * 2, 150)
-                
+
                 const getNormalizedPos = (x: number, y: number) => ({
                   left: Math.max(5, Math.min(95, ((x - minX + padding) / rangeX) * 100)),
                   top: Math.max(5, Math.min(95, ((y - minY + padding) / rangeY) * 100))
                 })
-                
+
                 const nodePositions = new Map(
                   nodes.map(n => [n.id, getNormalizedPos(n.position.x, n.position.y)])
                 )
-                
+
                 return (
                   <>
                     <svg className="absolute inset-0 h-full w-full">
@@ -932,7 +961,7 @@ export function GraphCanvas() {
                         const sourcePos = nodePositions.get(edge.source)
                         const targetPos = nodePositions.get(edge.target)
                         if (!sourcePos || !targetPos) return null
-                        
+
                         return (
                           <line
                             key={edge.id}
@@ -947,11 +976,11 @@ export function GraphCanvas() {
                         )
                       })}
                     </svg>
-                    
+
                     {nodes.map((node) => {
                       const data = node.data as CyberNodeData
                       const pos = nodePositions.get(node.id)!
-                      
+
                       const statusColorMap: Record<NodeStatus, string> = {
                         "default": "var(--node-default)",
                         "in-progress": "var(--node-in-progress)",
@@ -960,13 +989,13 @@ export function GraphCanvas() {
                         "failed": "var(--node-failed)",
                         "interesting": "var(--node-interesting)",
                       }
-                      
+
                       return (
                         <div
                           key={node.id}
                           className="absolute h-1.5 w-1.5 rounded-full"
-                          style={{ 
-                            left: `${pos.left}%`, 
+                          style={{
+                            left: `${pos.left}%`,
                             top: `${pos.top}%`,
                             transform: 'translate(-50%, -50%)',
                             backgroundColor: statusColorMap[data.status] || "var(--muted-foreground)",
@@ -980,12 +1009,11 @@ export function GraphCanvas() {
             </div>
           </div>
         </div>
-        
+
         <button
           onClick={() => setMinimapExpanded(!minimapExpanded)}
-          className={`mt-1 flex h-7 w-full items-center justify-center gap-1 rounded border border-border bg-card/80 font-mono text-xs text-muted-foreground backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground ${
-            !minimapExpanded ? "rounded-lg" : ""
-          }`}
+          className={`mt-1 flex h-7 w-full items-center justify-center gap-1 rounded border border-border bg-card/80 font-mono text-xs text-muted-foreground backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground ${!minimapExpanded ? "rounded-lg" : ""
+            }`}
         >
           {minimapExpanded ? (
             <>
@@ -1005,11 +1033,10 @@ export function GraphCanvas() {
       <div className="absolute right-4 bottom-4 z-10 flex gap-2">
         <button
           onClick={handleTidyEdges}
-          className={`flex items-center gap-1.5 rounded border px-3 py-1.5 font-mono text-xs backdrop-blur-sm transition-colors ${
-            useTidyEdges
-              ? "border-primary bg-primary/20 text-primary"
-              : "border-border bg-card/80 text-foreground hover:bg-muted"
-          }`}
+          className={`flex items-center gap-1.5 rounded border px-3 py-1.5 font-mono text-xs backdrop-blur-sm transition-colors ${useTidyEdges
+            ? "border-primary bg-primary/20 text-primary"
+            : "border-border bg-card/80 text-foreground hover:bg-muted"
+            }`}
           title={useTidyEdges ? "Switch to curved edges" : "Tidy edges (circuit-style)"}
         >
           <Workflow size={14} />

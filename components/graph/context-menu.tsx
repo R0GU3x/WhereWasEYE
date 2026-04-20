@@ -15,6 +15,7 @@ interface ContextMenuProps {
   onDeleteNode: (nodeId: string) => void
   onDeleteEdge?: (edgeId: string) => void
   onReverseEdge?: (edgeId: string) => void
+  onClearCanvas?: () => void
 }
 
 export function ContextMenu({
@@ -28,6 +29,7 @@ export function ContextMenu({
   onDeleteNode,
   onDeleteEdge,
   onReverseEdge,
+  onClearCanvas,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ x, y })
@@ -114,52 +116,40 @@ export function ContextMenu({
         },
         { type: "separator" as const },
         {
-          label: "Not Yet",
+          label: "Default",
           icon: "○",
           iconClass: "text-muted-foreground",
-          action: () => onSetStatus(nodeId, "not-yet"),
+          action: () => onSetStatus(nodeId, "default"),
         },
         {
-          label: "Queued",
+          label: "In-Progress",
           icon: "●",
-          iconClass: "text-[var(--node-queued)]",
-          action: () => onSetStatus(nodeId, "queued"),
+          iconClass: "text-[var(--node-in-progress)]",
+          action: () => onSetStatus(nodeId, "in-progress"),
         },
         {
-          label: "Running",
+          label: "Pending",
           icon: "●",
-          iconClass: "text-[var(--node-running)]",
-          action: () => onSetStatus(nodeId, "running"),
+          iconClass: "text-[var(--node-pending)]",
+          action: () => onSetStatus(nodeId, "pending"),
         },
         {
-          label: "Needs Review",
+          label: "Success",
           icon: "●",
-          iconClass: "text-[var(--node-needs-review)]",
-          action: () => onSetStatus(nodeId, "needs-review"),
+          iconClass: "text-[var(--node-success)]",
+          action: () => onSetStatus(nodeId, "success"),
+        },
+        {
+          label: "Failed",
+          icon: "●",
+          iconClass: "text-[var(--node-failed)]",
+          action: () => onSetStatus(nodeId, "failed"),
         },
         {
           label: "Interesting",
           icon: "●",
           iconClass: "text-[var(--node-interesting)]",
           action: () => onSetStatus(nodeId, "interesting"),
-        },
-        {
-          label: "False Positive",
-          icon: "●",
-          iconClass: "text-[var(--node-false-positive)]",
-          action: () => onSetStatus(nodeId, "false-positive"),
-        },
-        {
-          label: "Exploitable",
-          icon: "●",
-          iconClass: "text-[var(--node-exploitable)]",
-          action: () => onSetStatus(nodeId, "exploitable"),
-        },
-        {
-          label: "Pwned",
-          icon: "●",
-          iconClass: "text-[var(--node-pwned)]",
-          action: () => onSetStatus(nodeId, "pwned"),
         },
         { type: "separator" as const },
         {
@@ -175,6 +165,14 @@ export function ContextMenu({
           label: "Add Node",
           icon: "+",
           action: () => onAddNode(),
+        },
+        { type: "separator" as const },
+        {
+          label: "Clear Canvas",
+          icon: "⌫",
+          iconClass: "text-destructive",
+          action: () => onClearCanvas?.(),
+          className: "text-destructive hover:bg-destructive/10",
         },
       ]
 

@@ -63,6 +63,7 @@ export function GraphCanvas() {
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [bulkDeleteModal, setBulkDeleteModal] = useState(false)
   const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(null)
+  const [clearCanvasModal, setClearCanvasModal] = useState(false)
   const [useTidyEdges, setUseTidyEdges] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
@@ -80,16 +81,14 @@ export function GraphCanvas() {
           data: {
             ...node.data,
             // Map old status types to new ones
-            status: node.data.status === "default" ? "not-yet" : 
-                    node.data.status === "in-progress" ? "running" :
-                    node.data.status === "success" ? "pwned" :
-                    node.data.status === "failed" ? "false-positive" :
-                    node.data.status === "paused" ? "queued" :
-                    node.data.status === "not-started" ? "not-yet" :
-                    node.data.status === "documented" ? "pwned" :
-                    node.data.status === "dead-end" ? "false-positive" :
-                    node.data.status === "post-exploitation" ? "pwned" :
-                    node.data.status || "not-yet"
+            status: node.data.status === "not-yet" ? "default" : 
+                    node.data.status === "running" ? "in-progress" :
+                    node.data.status === "queued" ? "pending" :
+                    node.data.status === "pwned" ? "success" :
+                    node.data.status === "false-positive" ? "failed" :
+                    node.data.status === "exploitable" ? "failed" :
+                    node.data.status === "needs-review" ? "pending" :
+                    node.data.status || "default"
           }
         }))
         setNodes(updatedNodes)
@@ -151,7 +150,7 @@ export function GraphCanvas() {
         position,
         data: {
           label: "New Node",
-          status: "not-yet" as NodeStatus,
+          status: "default" as NodeStatus,
           entityType: "",
           notes: "",
           createdAt: new Date().toISOString(),
@@ -659,16 +658,14 @@ export function GraphCanvas() {
                 data: {
                   ...node.data,
                   // Map old status types to new ones
-                  status: node.data.status === "default" ? "not-yet" : 
-                          node.data.status === "in-progress" ? "running" :
-                          node.data.status === "success" ? "pwned" :
-                          node.data.status === "failed" ? "false-positive" :
-                          node.data.status === "paused" ? "queued" :
-                          node.data.status === "not-started" ? "not-yet" :
-                          node.data.status === "documented" ? "pwned" :
-                          node.data.status === "dead-end" ? "false-positive" :
-                          node.data.status === "post-exploitation" ? "pwned" :
-                          node.data.status || "not-yet"
+                  status: node.data.status === "not-yet" ? "default" : 
+                          node.data.status === "running" ? "in-progress" :
+                          node.data.status === "queued" ? "pending" :
+                          node.data.status === "pwned" ? "success" :
+                          node.data.status === "false-positive" ? "failed" :
+                          node.data.status === "exploitable" ? "failed" :
+                          node.data.status === "needs-review" ? "pending" :
+                          node.data.status || "default"
                 }
               }))
               setNodes(updatedNodes)
@@ -721,6 +718,21 @@ export function GraphCanvas() {
     setBulkDeleteModal(false)
     setSelectedNodes(new Set())
   }, [nodes, edges, selectedNodes, setNodes, setEdges])
+
+  // Clear canvas handler - shows confirmation modal
+  const handleClearCanvasRequest = useCallback(() => {
+    setClearCanvasModal(true)
+  }, [])
+
+  // Actually clear canvas after confirmation
+  const handleClearCanvas = useCallback(() => {
+    setNodes([])
+    setEdges([])
+    setSelectedNode(null)
+    setSelectedNodes(new Set())
+    localStorage.removeItem("cyber-graph-data")
+    setClearCanvasModal(false)
+  }, [setNodes, setEdges])
 
   return (
     <div ref={reactFlowWrapper} className="relative h-screen w-screen" 
@@ -861,16 +873,28 @@ export function GraphCanvas() {
           <span className="font-mono text-sm text-muted-foreground">{selectedNodes.size} selected</span>
           <div className="h-4 w-px bg-border" />
           <button
-            onClick={() => handleBulkStatusUpdate("queued")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-queued)]/10 text-[var(--node-queued)] hover:bg-[var(--node-queued)]/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("in-progress")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-in-progress)]/10 text-[var(--node-in-progress)] hover:bg-[var(--node-in-progress)]/20 transition-colors"
           >
-            Queued
+            In-Progress
           </button>
           <button
-            onClick={() => handleBulkStatusUpdate("running")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-running)]/10 text-[var(--node-running)] hover:bg-[var(--node-running)]/20 transition-colors"
+            onClick={() => handleBulkStatusUpdate("pending")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-pending)]/10 text-[var(--node-pending)] hover:bg-[var(--node-pending)]/20 transition-colors"
           >
-            Running
+            Pending
+          </button>
+          <button
+            onClick={() => handleBulkStatusUpdate("success")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-success)]/10 text-[var(--node-success)] hover:bg-[var(--node-success)]/20 transition-colors"
+          >
+            Success
+          </button>
+          <button
+            onClick={() => handleBulkStatusUpdate("failed")}
+            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-failed)]/10 text-[var(--node-failed)] hover:bg-[var(--node-failed)]/20 transition-colors"
+          >
+            Failed
           </button>
           <button
             onClick={() => handleBulkStatusUpdate("interesting")}
@@ -879,19 +903,7 @@ export function GraphCanvas() {
             Interesting
           </button>
           <button
-            onClick={() => handleBulkStatusUpdate("exploitable")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-exploitable)]/10 text-[var(--node-exploitable)] hover:bg-[var(--node-exploitable)]/20 transition-colors"
-          >
-            Exploitable
-          </button>
-          <button
-            onClick={() => handleBulkStatusUpdate("pwned")}
-            className="rounded px-3 py-1 text-sm font-medium bg-[var(--node-pwned)]/10 text-[var(--node-pwned)] hover:bg-[var(--node-pwned)]/20 transition-colors"
-          >
-            Pwned
-          </button>
-          <button
-            onClick={() => handleBulkStatusUpdate("not-yet")}
+            onClick={() => handleBulkStatusUpdate("default")}
             className="rounded px-3 py-1 text-sm font-medium bg-muted/20 text-muted-foreground hover:bg-muted/30 transition-colors"
           >
             Reset
@@ -973,17 +985,15 @@ export function GraphCanvas() {
                       const data = node.data as CyberNodeData
                       const pos = nodePositions.get(node.id)!
                       
-                      // Map status to CSS variable colors
-                      const statusColorMap: Record<NodeStatus, string> = {
-                        "not-yet": "var(--node-not-yet)",
-                        "queued": "var(--node-queued)",
-                        "running": "var(--node-running)",
-                        "needs-review": "var(--node-needs-review)",
-                        "interesting": "var(--node-interesting)",
-                        "false-positive": "var(--node-false-positive)",
-                        "exploitable": "var(--node-exploitable)",
-                        "pwned": "var(--node-pwned)",
-                      }
+// Map status to CSS variable colors
+                                      const statusColorMap: Record<NodeStatus, string> = {
+                                        "default": "var(--node-default)",
+                                        "in-progress": "var(--node-in-progress)",
+                                        "pending": "var(--node-pending)",
+                                        "success": "var(--node-success)",
+                                        "failed": "var(--node-failed)",
+                                        "interesting": "var(--node-interesting)",
+                                      }
                       
                       return (
                         <div
@@ -1067,6 +1077,7 @@ export function GraphCanvas() {
           onDeleteNode={requestDeleteNode}
           onDeleteEdge={handleDeleteEdge}
           onReverseEdge={handleReverseEdge}
+          onClearCanvas={handleClearCanvasRequest}
         />
       )}
 
@@ -1122,6 +1133,30 @@ export function GraphCanvas() {
                 className="rounded px-4 py-2 font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear Canvas Confirmation Modal */}
+      {clearCanvasModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4">
+            <h3 className="mb-2 text-lg font-semibold text-foreground">Clear Canvas?</h3>
+            <p className="mb-6 text-sm text-muted-foreground">This will remove all nodes and edges. This action cannot be undone.</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setClearCanvasModal(false)}
+                className="rounded px-4 py-2 font-medium text-foreground border border-border hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearCanvas}
+                className="rounded px-4 py-2 font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+              >
+                Clear All
               </button>
             </div>
           </div>

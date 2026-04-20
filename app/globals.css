@@ -39,14 +39,12 @@
   --sidebar-ring: oklch(0.7 0.2 180);
   
   /* Cyber theme specific - Node statuses */
-  --node-not-yet: oklch(0.5 0 0);
-  --node-queued: oklch(0.95 0 0);
-  --node-running: oklch(0.6 0.2 250);
-  --node-needs-review: oklch(0.65 0.2 300);
-  --node-interesting: oklch(0.7 0.2 55);
-  --node-false-positive: oklch(0.45 0.1 50);
-  --node-exploitable: oklch(0.55 0.25 25);
-  --node-pwned: oklch(0.6 0.2 145);
+  --node-default: oklch(0.5 0 0);
+  --node-in-progress: oklch(0.6 0.2 250);
+  --node-pending: oklch(0.75 0.18 85);
+  --node-success: oklch(0.6 0.2 145);
+  --node-failed: oklch(0.55 0.25 25);
+  --node-interesting: oklch(0.65 0.2 300);
   
   /* Glow effects */
   --glow-cyan: oklch(0.7 0.2 180);

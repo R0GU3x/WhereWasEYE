@@ -4,9 +4,15 @@ import { memo } from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
 import { cn } from "@/lib/utils"
 
-export type NodeStatus = "default" | "in-progress" | "success" | "failed"
+export type NodeStatus = 
+  | "default"
+  | "in-progress"
+  | "pending"
+  | "success"
+  | "failed"
+  | "interesting"
 
-export interface CyberNodeData {
+export interface CyberNodeData extends Record<string, unknown> {
   label: string
   status: NodeStatus
   entityType: string
@@ -15,17 +21,21 @@ export interface CyberNodeData {
 }
 
 const statusStyles: Record<NodeStatus, string> = {
-  default: "border-border bg-card shadow-[0_0_15px_rgba(100,100,120,0.15)]",
+  "default": "border-border bg-card shadow-[0_0_15px_rgba(100,100,120,0.15)]",
   "in-progress": "border-[var(--node-in-progress)] bg-card shadow-[0_0_20px_rgba(100,150,255,0.3)]",
-  success: "border-[var(--node-success)] bg-card shadow-[0_0_20px_rgba(100,220,150,0.3)]",
-  failed: "border-[var(--node-failed)] bg-card shadow-[0_0_20px_rgba(255,100,100,0.3)]",
+  "pending": "border-[var(--node-pending)] bg-card shadow-[0_0_20px_rgba(255,200,50,0.3)]",
+  "success": "border-[var(--node-success)] bg-card shadow-[0_0_20px_rgba(100,220,150,0.3)]",
+  "failed": "border-[var(--node-failed)] bg-card shadow-[0_0_25px_rgba(255,50,50,0.4)]",
+  "interesting": "border-[var(--node-interesting)] bg-card shadow-[0_0_20px_rgba(200,100,255,0.3)]",
 }
 
 const statusIndicators: Record<NodeStatus, string> = {
-  default: "bg-muted-foreground",
-  "in-progress": "bg-[var(--node-in-progress)]",
-  success: "bg-[var(--node-success)]",
-  failed: "bg-[var(--node-failed)]",
+  "default": "bg-muted-foreground",
+  "in-progress": "bg-[var(--node-in-progress)] animate-pulse",
+  "pending": "bg-[var(--node-pending)]",
+  "success": "bg-[var(--node-success)]",
+  "failed": "bg-[var(--node-failed)]",
+  "interesting": "bg-[var(--node-interesting)]",
 }
 
 function CyberNodeComponent({ data, selected }: NodeProps) {

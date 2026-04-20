@@ -38,11 +38,15 @@
   --sidebar-border: oklch(0.3 0.02 260);
   --sidebar-ring: oklch(0.7 0.2 180);
   
-  /* Cyber theme specific */
-  --node-default: oklch(0.25 0.02 260);
-  --node-in-progress: oklch(0.55 0.2 250);
+  /* Cyber theme specific - Node statuses */
+  --node-default: oklch(0.5 0 0);
+  --node-in-progress: oklch(0.6 0.2 250);
+  --node-pending: oklch(0.75 0.18 85);
   --node-success: oklch(0.6 0.2 145);
-  --node-failed: oklch(0.55 0.2 25);
+  --node-failed: oklch(0.55 0.25 25);
+  --node-interesting: oklch(0.65 0.2 300);
+  
+  /* Glow effects */
   --glow-cyan: oklch(0.7 0.2 180);
   --glow-green: oklch(0.6 0.2 145);
   --glow-red: oklch(0.55 0.2 25);
@@ -150,4 +154,22 @@ textarea,
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;
+}
+
+/* Hide ReactFlow's default selection box and selection layer */
+.react-flow__selection,
+.react-flow__nodesselection,
+.react-flow__nodesselection-rect,
+.react-flow__selection-rect {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Edge crossing indicator dots */
+.edge-crossing-indicator {
+  fill: var(--primary);
+  stroke: var(--background);
+  stroke-width: 2;
 }

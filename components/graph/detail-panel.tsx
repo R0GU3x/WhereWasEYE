@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { Node } from "@xyflow/react"
 import type { CyberNodeData, NodeStatus } from "./cyber-node"
 import { cn } from "@/lib/utils"
@@ -9,17 +9,21 @@ interface DetailPanelProps {
   node: Node<CyberNodeData>
   onClose: () => void
   onUpdateNode: (nodeId: string, data: Partial<CyberNodeData>) => void
+  onDeleteNode?: (nodeId: string) => void
 }
 
 const statusLabels: Record<NodeStatus, { label: string; className: string }> = {
-  default: { label: "Default", className: "text-muted-foreground" },
-  "in-progress": { label: "In Progress", className: "text-[var(--node-in-progress)]" },
-  success: { label: "Success", className: "text-[var(--node-success)]" },
-  failed: { label: "Failed", className: "text-[var(--node-failed)]" },
+  "default": { label: "Default", className: "text-muted-foreground" },
+  "in-progress": { label: "In-Progress", className: "text-[var(--node-in-progress)]" },
+  "pending": { label: "Pending", className: "text-[var(--node-pending)]" },
+  "success": { label: "Success", className: "text-[var(--node-success)]" },
+  "failed": { label: "Failed", className: "text-[var(--node-failed)]" },
+  "interesting": { label: "Interesting", className: "text-[var(--node-interesting)]" },
 }
 
-export function DetailPanel({ node, onClose, onUpdateNode }: DetailPanelProps) {
+export function DetailPanel({ node, onClose, onUpdateNode, onDeleteNode }: DetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const data = node.data as CyberNodeData
 
   useEffect(() => {
@@ -53,8 +57,8 @@ export function DetailPanel({ node, onClose, onUpdateNode }: DetailPanelProps) {
             onChange={(e) => onUpdateNode(node.id, { label: e.target.value })}
             className="bg-transparent font-mono text-lg font-semibold text-foreground outline-none focus:border-b focus:border-primary"
           />
-          <div className={cn("mt-1 text-sm", statusLabels[data.status].className)}>
-            {statusLabels[data.status].label}
+          <div className={cn("mt-1 text-sm", statusLabels[data.status]?.className || "text-muted-foreground")}>
+            {statusLabels[data.status]?.label || data.status || "Unknown"}
           </div>
         </div>
         <button
@@ -112,6 +116,41 @@ export function DetailPanel({ node, onClose, onUpdateNode }: DetailPanelProps) {
             className="w-full resize-none rounded border border-border bg-input px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
+
+        {/* Delete Button with Confirmation */}
+        {onDeleteNode && (
+          <div className="border-t border-border pt-4">
+            {showDeleteConfirm ? (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Delete this node and all connected edges?</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 rounded px-3 py-1.5 text-sm font-medium border border-border hover:bg-muted transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      onDeleteNode(node.id)
+                      onClose()
+                    }}
+                    className="flex-1 rounded px-3 py-1.5 text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full rounded px-3 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                Delete Node
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

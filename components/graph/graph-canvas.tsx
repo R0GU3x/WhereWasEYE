@@ -503,14 +503,16 @@ export function GraphCanvas() {
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (!reactFlowInstance) return
 
-    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    // Shift + scroll: horizontal panning
+    if (e.shiftKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault()
       const { x, y } = reactFlowInstance.getViewport()
       reactFlowInstance.setViewport({
-        x: x,
-        y: y - (e.deltaY > 0 ? 50 : -50),
+        x: x - (e.deltaY > 0 ? 50 : -50),
+        y: y,
         zoom: reactFlowInstance.getZoom(),
       })
+    // Ctrl/Cmd + scroll: zoom
     } else if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
       const currentZoom = reactFlowInstance.getZoom()
@@ -524,6 +526,15 @@ export function GraphCanvas() {
         const flowPos = reactFlowInstance.screenToFlowPosition({ x: cursorX, y: cursorY })
         reactFlowInstance.setCenter(flowPos.x, flowPos.y, { zoom: newZoom, duration: 0 })
       }
+    // Normal scroll: vertical panning
+    } else if (!e.shiftKey) {
+      e.preventDefault()
+      const { x, y } = reactFlowInstance.getViewport()
+      reactFlowInstance.setViewport({
+        x: x,
+        y: y - (e.deltaY > 0 ? 50 : -50),
+        zoom: reactFlowInstance.getZoom(),
+      })
     }
   }, [reactFlowInstance])
 
@@ -840,6 +851,10 @@ export function GraphCanvas() {
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
               <span><strong>Scroll:</strong> pan up/down</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span><strong>Shift + Scroll:</strong> pan left/right</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />

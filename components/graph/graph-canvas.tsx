@@ -57,7 +57,7 @@ export function GraphCanvas() {
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set())
   const [showHelp, setShowHelp] = useState(false)
   const [minimapExpanded, setMinimapExpanded] = useState(true)
-  const [isSelectMode, setIsSelectMode] = useState(false) // Spacebar toggles selection mode
+  const [isShiftHeld, setIsShiftHeld] = useState(false)
   const [isDrawingSelectBox, setIsDrawingSelectBox] = useState(false)
   const [selectStart, setSelectStart] = useState<{ x: number; y: number } | null>(null)
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
@@ -80,7 +80,6 @@ export function GraphCanvas() {
           ...node,
           data: {
             ...node.data,
-            // Map old status types to new ones
             status: node.data.status === "not-yet" ? "default" : 
                     node.data.status === "running" ? "in-progress" :
                     node.data.status === "queued" ? "pending" :
@@ -111,12 +110,9 @@ export function GraphCanvas() {
     }
   }, [setNodes, setEdges])
 
-
-
   // Adjust initial zoom level after ReactFlow initializes
   useEffect(() => {
     if (reactFlowInstance) {
-      // Zoom out by 3 scroll units (each unit is roughly 0.25 zoom)
       const zoomOutFactor = 1.10
       reactFlowInstance.setCenter(0, 0, { zoom: zoomOutFactor, duration: 0 })
     }
@@ -142,7 +138,7 @@ export function GraphCanvas() {
   )
 
   const createNode = useCallback(
-    (position: { x: number; y: number }, parentId?: string): Node<CyberNodeData> => {
+    (position: { x: number; y: number }): Node<CyberNodeData> => {
       const id = `node-${Date.now()}`
       return {
         id,
@@ -169,24 +165,18 @@ export function GraphCanvas() {
       if (parentId) {
         const parentNode = nodes.find((n) => n.id === parentId)
         if (parentNode) {
-          // Count existing children of this parent to determine offset
           const existingChildren = edges.filter((e) => e.source === parentId).length
-          
-          // Spread children in a fan pattern below the parent
           const baseOffsetY = 120
-          const spreadAngle = 30 // degrees between each child
-          const maxSpread = 60 // max angle from center
+          const spreadAngle = 30
+          const maxSpread = 60
           
-          // Calculate angle for this child (-maxSpread to +maxSpread)
           const totalChildren = existingChildren + 1
           let angle = 0
           if (totalChildren > 1) {
-            // Spread evenly
             const step = Math.min(spreadAngle, (maxSpread * 2) / (totalChildren - 1))
             angle = -maxSpread + (existingChildren * step) + (step / 2)
           }
           
-          // Convert angle to x offset (sin) while keeping y fixed
           const radians = (angle * Math.PI) / 180
           const xOffset = Math.sin(radians) * baseOffsetY
           
@@ -203,7 +193,7 @@ export function GraphCanvas() {
         position = flowPosition
       }
 
-      const newNode = createNode(position, parentId)
+      const newNode = createNode(position)
       setNodes((nds) => [...nds, newNode])
 
       if (parentId) {
@@ -230,7 +220,6 @@ export function GraphCanvas() {
             : node
         )
       )
-      // Update selected node if it's the one being modified
       if (selectedNode?.id === nodeId) {
         setSelectedNode((prev) =>
           prev ? { ...prev, data: { ...prev.data, status } } : null
@@ -240,12 +229,10 @@ export function GraphCanvas() {
     [setNodes, selectedNode]
   )
 
-  // Request confirmation for deleting a node
   const requestDeleteNode = useCallback((nodeId: string) => {
     setDeleteConfirmNodeId(nodeId)
   }, [])
 
-  // Actually delete the node after confirmation
   const handleConfirmDeleteNode = useCallback(() => {
     if (!deleteConfirmNodeId) return
     setNodes((nds) => nds.filter((node) => node.id !== deleteConfirmNodeId))
@@ -258,7 +245,6 @@ export function GraphCanvas() {
     setDeleteConfirmNodeId(null)
   }, [setNodes, setEdges, selectedNode, deleteConfirmNodeId])
 
-  // Direct delete (for keyboard shortcut after bulk confirmation or undo scenarios)
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
       setNodes((nds) => nds.filter((node) => node.id !== nodeId))
@@ -281,7 +267,6 @@ export function GraphCanvas() {
             : node
         )
       )
-      // Update selected node to reflect changes
       if (selectedNode?.id === nodeId) {
         setSelectedNode((prev) =>
           prev ? { ...prev, data: { ...prev.data, ...data } } : null
@@ -311,12 +296,9 @@ export function GraphCanvas() {
     [setEdges]
   )
 
-  // Toggle tidy edges mode - converts edges to orthogonal (circuit-style) routing
   const handleTidyEdges = useCallback(() => {
     setUseTidyEdges((prev) => {
       const newValue = !prev
-      
-      // Update all edges to use smoothstep type or crossing type for bezier with indicators
       setEdges((eds) =>
         eds.map((edge) => ({
           ...edge,
@@ -324,7 +306,6 @@ export function GraphCanvas() {
           data: { ...edge.data, useSmoothStep: newValue },
         }))
       )
-      
       return newValue
     })
   }, [setEdges])
@@ -354,28 +335,19 @@ export function GraphCanvas() {
   )
 
   const onPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent) => {
-  event.preventDefault()
-  setContextMenu({
-  x: event.clientX,
+    event.preventDefault()
+    setContextMenu({
+      x: event.clientX,
       y: event.clientY,
     })
   }, [])
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (event, node) => {
-      // Selection only works in select mode (spacebar held)
-      if (!isSelectMode) {
-        // In pan mode, just open detail panel for the node
-        setSelectedNode(node as Node<CyberNodeData>)
-        setSelectedNodes(new Set())
-        return
-      }
-
-      if ((event.ctrlKey || event.metaKey)) {
-        // Ctrl/Cmd + click to add/remove from selection
+      // Shift+click to add/remove from multi-selection
+      if (event.shiftKey) {
         setSelectedNodes((prev) => {
           const newSet = new Set(prev)
-          // If there's a single selected node, add it to the multi-selection first
           if (selectedNode && !newSet.has(selectedNode.id)) {
             newSet.add(selectedNode.id)
           }
@@ -388,40 +360,35 @@ export function GraphCanvas() {
         })
         setSelectedNode(null)
       } else {
-        // Single select in select mode
+        // Normal click - open detail panel
         setSelectedNode(node as Node<CyberNodeData>)
         setSelectedNodes(new Set())
       }
     },
-    [selectedNode, isSelectMode]
+    [selectedNode]
   )
 
   const onNodeDoubleClick: NodeMouseHandler = useCallback(
     (event, node) => {
       event.stopPropagation()
-      // Open detail panel for editing
       setSelectedNode(node as Node<CyberNodeData>)
     },
     []
   )
 
   const onPaneClick = useCallback(() => {
-    // Only clear selection if not drawing a selection box
     if (!isDrawingSelectBox) {
       setSelectedNode(null)
-      // Only clear multi-selection when NOT in select mode (prevent accidental clearing)
-      if (!isSelectMode) {
+      if (!isShiftHeld) {
         setSelectedNodes(new Set())
       }
     }
     setContextMenu(null)
-  }, [isDrawingSelectBox, isSelectMode])
+  }, [isDrawingSelectBox, isShiftHeld])
 
-  // Handle pane mouse down for drag-to-select (only in selection mode with Ctrl)
+  // Handle pane mouse down for Shift + drag selection box
   const handlePaneMouseDown = useCallback((e: React.MouseEvent) => {
-    // Selection box only activates in select mode + Ctrl/Cmd key
-    if (!isSelectMode || e.button !== 0) return
-    if (!(e.ctrlKey || e.metaKey)) return // Require Ctrl for drag selection
+    if (!isShiftHeld || e.button !== 0) return
     if ((e.target as HTMLElement).closest('.react-flow__node')) return
 
     const rect = reactFlowWrapper.current?.getBoundingClientRect()
@@ -429,9 +396,9 @@ export function GraphCanvas() {
 
     setSelectStart({ x: e.clientX - rect.left, y: e.clientY - rect.top })
     setIsDrawingSelectBox(true)
-  }, [isSelectMode])
+  }, [isShiftHeld])
 
-  // Handle pane mouse move for drag-to-select box
+  // Handle pane mouse move for selection box
   const handlePaneMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isDrawingSelectBox || !selectStart) return
 
@@ -452,7 +419,7 @@ export function GraphCanvas() {
   }, [isDrawingSelectBox, selectStart])
 
   // Handle pane mouse up to finalize selection
-  const handlePaneMouseUp = useCallback((e: MouseEvent | React.MouseEvent) => {
+  const handlePaneMouseUp = useCallback(() => {
     if (!isDrawingSelectBox || !selectBox || !reactFlowInstance) {
       setIsDrawingSelectBox(false)
       setSelectBox(null)
@@ -460,7 +427,6 @@ export function GraphCanvas() {
       return
     }
 
-    // Check if drag was more than just a click (threshold of 5px)
     if (selectBox.width < 5 && selectBox.height < 5) {
       setIsDrawingSelectBox(false)
       setSelectBox(null)
@@ -476,7 +442,6 @@ export function GraphCanvas() {
       return
     }
 
-    // Convert screen selection box corners to flow coordinates
     const topLeft = reactFlowInstance.screenToFlowPosition({
       x: selectBox.x + rect.left,
       y: selectBox.y + rect.top,
@@ -493,7 +458,6 @@ export function GraphCanvas() {
       height: Math.abs(bottomRight.y - topLeft.y),
     }
 
-    // Find nodes within the selection box using flow coordinates
     const nodeWidth = 140
     const nodeHeight = 60
     const selectedNodeIds = nodes.filter((node) => {
@@ -507,7 +471,6 @@ export function GraphCanvas() {
       const boxRight = flowSelectBox.x + flowSelectBox.width
       const boxBottom = flowSelectBox.y + flowSelectBox.height
 
-      // Check if node overlaps with selection box
       return (
         nodeLeft < boxRight &&
         nodeRight > boxLeft &&
@@ -516,14 +479,12 @@ export function GraphCanvas() {
       )
     }).map((n) => n.id)
 
-    // Add to existing selection (Ctrl+drag always adds)
     if (selectedNodeIds.length > 0) {
       setSelectedNodes((prev) => {
         const newSet = new Set(prev)
         selectedNodeIds.forEach((id) => newSet.add(id))
         return newSet
       })
-      // Also update nodes to reflect selection state
       setNodes((nds) =>
         nds.map((node) => ({
           ...node,
@@ -542,7 +503,6 @@ export function GraphCanvas() {
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (!reactFlowInstance) return
 
-    // Normal scroll: pan up-down
     if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault()
       const { x, y } = reactFlowInstance.getViewport()
@@ -551,25 +511,12 @@ export function GraphCanvas() {
         y: y - (e.deltaY > 0 ? 50 : -50),
         zoom: reactFlowInstance.getZoom(),
       })
-    }
-    // Shift + scroll for horizontal pan (left-right)
-    else if (e.shiftKey && !e.ctrlKey && !e.metaKey) {
-      e.preventDefault()
-      const { x, y } = reactFlowInstance.getViewport()
-      reactFlowInstance.setViewport({
-        x: x - (e.deltaY > 0 ? 50 : -50),
-        y: y,
-        zoom: reactFlowInstance.getZoom(),
-      })
-    }
-    // Ctrl/Cmd + scroll for zoom
-    else if (e.ctrlKey || e.metaKey) {
+    } else if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
       const currentZoom = reactFlowInstance.getZoom()
       const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1
       const newZoom = Math.max(0.1, Math.min(currentZoom * zoomDelta, 4))
       
-      // Zoom towards cursor
       const rect = reactFlowWrapper.current?.getBoundingClientRect()
       if (rect) {
         const cursorX = e.clientX - rect.left
@@ -583,11 +530,15 @@ export function GraphCanvas() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle keyboard shortcuts if typing in an input
       const target = e.target as HTMLElement
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
       
-      // Delete/Backspace for selected nodes (only if not in input) - show confirmation
+      // Track shift key
+      if (e.key === "Shift") {
+        setIsShiftHeld(true)
+      }
+      
+      // Delete/Backspace for selected nodes
       if ((e.key === "Delete" || e.key === "Backspace") && !isInput) {
         e.preventDefault()
         if (selectedNodes.size > 0) {
@@ -596,23 +547,18 @@ export function GraphCanvas() {
           requestDeleteNode(selectedNode.id)
         }
       }
+      
       // Escape clears selection
       if (e.key === "Escape" && !isInput) {
         setSelectedNode(null)
         setSelectedNodes(new Set())
         setContextMenu(null)
       }
-      // Spacebar toggles to selection mode (default is pan mode)
-      if (e.code === "Space" && !isSelectMode && !isInput) {
-        e.preventDefault()
-        setIsSelectMode(true)
-      }
     }
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        setIsSelectMode(false)
-        // Clear any ongoing selection box when exiting select mode
+      if (e.key === "Shift") {
+        setIsShiftHeld(false)
         setIsDrawingSelectBox(false)
         setSelectBox(null)
         setSelectStart(null)
@@ -625,7 +571,7 @@ export function GraphCanvas() {
       document.removeEventListener("keydown", handleKeyDown)
       document.removeEventListener("keyup", handleKeyUp)
     }
-  }, [selectedNode, selectedNodes, requestDeleteNode, isSelectMode])
+  }, [selectedNode, selectedNodes, requestDeleteNode])
 
   // Export function
   const handleExport = useCallback(() => {
@@ -652,12 +598,10 @@ export function GraphCanvas() {
           try {
             const data = JSON.parse(event.target?.result as string)
             if (data.nodes && data.edges) {
-              // Update nodes with correct status type (handle legacy data)
               const updatedNodes = data.nodes.map((node: Node<CyberNodeData>) => ({
                 ...node,
                 data: {
                   ...node.data,
-                  // Map old status types to new ones
                   status: node.data.status === "not-yet" ? "default" : 
                           node.data.status === "running" ? "in-progress" :
                           node.data.status === "queued" ? "pending" :
@@ -670,7 +614,6 @@ export function GraphCanvas() {
               }))
               setNodes(updatedNodes)
               
-              // Update edges with proper type
               const tidyMode = data.useTidyEdges ?? false
               const updatedEdges = data.edges.map((edge: Edge) => ({
                 ...edge,
@@ -719,12 +662,11 @@ export function GraphCanvas() {
     setSelectedNodes(new Set())
   }, [nodes, edges, selectedNodes, setNodes, setEdges])
 
-  // Clear canvas handler - shows confirmation modal
+  // Clear canvas handler
   const handleClearCanvasRequest = useCallback(() => {
     setClearCanvasModal(true)
   }, [])
 
-  // Actually clear canvas after confirmation
   const handleClearCanvas = useCallback(() => {
     setNodes([])
     setEdges([])
@@ -734,14 +676,20 @@ export function GraphCanvas() {
     setClearCanvasModal(false)
   }, [setNodes, setEdges])
 
+  // Check if canvas is empty
+  const isCanvasEmpty = nodes.length === 0
+
   return (
-    <div ref={reactFlowWrapper} className="relative h-screen w-screen" 
-         onMouseDown={handlePaneMouseDown}
-         onMouseMove={handlePaneMouseMove}
-         onMouseUp={handlePaneMouseUp}
-         onWheel={handleWheel}
-         style={{ cursor: isSelectMode ? 'crosshair' : 'grab' }}>
-      {/* Drag-to-select box */}
+    <div 
+      ref={reactFlowWrapper} 
+      className="relative h-screen w-screen" 
+      onMouseDown={handlePaneMouseDown}
+      onMouseMove={handlePaneMouseMove}
+      onMouseUp={handlePaneMouseUp}
+      onWheel={handleWheel}
+      style={{ cursor: isShiftHeld ? 'crosshair' : 'grab' }}
+    >
+      {/* Selection box */}
       {selectBox && (
         <div
           className="pointer-events-none absolute z-50 rounded border-2 border-dashed border-primary bg-primary/10"
@@ -753,6 +701,42 @@ export function GraphCanvas() {
             boxShadow: "0 0 20px var(--glow-cyan), inset 0 0 10px var(--glow-cyan)",
           }}
         />
+      )}
+
+      {/* Empty Canvas Art */}
+      {isCanvasEmpty && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-6 opacity-30">
+            {/* ASCII Art Style Robot/Hacker */}
+            <pre className="font-mono text-xs text-muted-foreground leading-none select-none">
+{`
+        ╭──────────────────────────────────╮
+        │   ┌─────────────────────────┐   │
+        │   │  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │   │
+        │   │  ▓  ╔══╗      ╔══╗  ▓   │   │
+        │   │  ▓  ║██║      ║██║  ▓   │   │
+        │   │  ▓  ╚══╝      ╚══╝  ▓   │   │
+        │   │  ▓                  ▓   │   │
+        │   │  ▓    ╔════════╗    ▓   │   │
+        │   │  ▓    ╚════════╝    ▓   │   │
+        │   │  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │   │
+        │   └─────────────────────────┘   │
+        │          ║      ║               │
+        │     ╔════╩══════╩════╗          │
+        │     ║  ░░░░░░░░░░░░  ║          │
+        │     ║  ░ AWAITING ░  ║          │
+        │     ║  ░  INPUT   ░  ║          │
+        │     ║  ░░░░░░░░░░░░  ║          │
+        │     ╚════════════════╝          │
+        ╰──────────────────────────────────╯
+
+           > Right-click to add a node
+           > Shift + Drag to select
+           > Let's map some targets...
+`}
+            </pre>
+          </div>
+        </div>
       )}
       
       <ReactFlow
@@ -774,7 +758,7 @@ export function GraphCanvas() {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
-        panOnDrag={!isSelectMode}
+        panOnDrag={!isShiftHeld}
         selectionOnDrag={false}
         selectNodesOnDrag={false}
         zoomOnScroll={false}
@@ -801,7 +785,6 @@ export function GraphCanvas() {
           className="!absolute !right-4 !bottom-16 !left-auto !border-border !bg-card/80 !backdrop-blur-sm [&>button]:!border-border [&>button]:!bg-transparent [&>button]:!fill-muted-foreground [&>button:hover]:!bg-primary/20 [&>button:hover]:!fill-primary" 
           position="bottom-right"
         />
-        
       </ReactFlow>
 
       {/* Help Button */}
@@ -814,7 +797,7 @@ export function GraphCanvas() {
         </button>
         
         {/* Help Popup */}
-          <div
+        <div
           className={`absolute bottom-14 left-0 w-72 origin-bottom-left rounded-lg border border-border bg-card/95 p-4 backdrop-blur-md transition-all duration-300 ease-out ${
             showHelp
               ? "scale-100 opacity-100 translate-y-0"
@@ -825,23 +808,15 @@ export function GraphCanvas() {
           <ul className="space-y-2 font-mono text-xs text-muted-foreground">
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span><strong>Drag canvas</strong> to pan (default hand mode)</span>
+              <span><strong>Drag canvas</strong> to pan around</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span><strong>Hold Space</strong> to enter selection mode</span>
+              <span><strong>Hold Shift + Drag</strong> to draw selection box</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span><strong>Space + Click</strong> to select a node</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span><strong>Space + Ctrl + Click</strong> to multi-select</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span><strong>Space + Ctrl + Drag</strong> to draw selection box</span>
+              <span><strong>Shift + Click</strong> to multi-select nodes</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
@@ -849,11 +824,11 @@ export function GraphCanvas() {
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span><strong>Scroll:</strong> up/down, <strong>Shift+Scroll:</strong> left/right</span>
+              <span><strong>Scroll:</strong> pan up/down</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span><strong>Ctrl+Scroll:</strong> zoom in/out at cursor</span>
+              <span><strong>Ctrl + Scroll:</strong> zoom in/out at cursor</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
@@ -920,7 +895,6 @@ export function GraphCanvas() {
 
       {/* Minimap Container */}
       <div className="absolute right-4 top-4 z-20">
-        {/* Minimap */}
         <div
           className={`overflow-hidden rounded-lg border border-border bg-card/80 backdrop-blur-sm transition-all duration-300 ease-out ${
             minimapExpanded ? "h-24 w-36 opacity-60 hover:opacity-90" : "h-0 w-36 opacity-0 border-transparent"
@@ -928,11 +902,9 @@ export function GraphCanvas() {
         >
           <div className="h-full w-full p-1">
             <div className="relative h-full w-full rounded bg-background/50 overflow-hidden">
-              {/* Mini edges and nodes representation */}
               {(() => {
                 if (nodes.length === 0) return null
                 
-                // Calculate bounds of all nodes
                 const xs = nodes.map(n => n.position.x)
                 const ys = nodes.map(n => n.position.y)
                 const minX = Math.min(...xs)
@@ -940,25 +912,21 @@ export function GraphCanvas() {
                 const minY = Math.min(...ys)
                 const maxY = Math.max(...ys)
                 
-                // Add padding to bounds
                 const padding = 50
                 const rangeX = Math.max(maxX - minX + padding * 2, 200)
                 const rangeY = Math.max(maxY - minY + padding * 2, 150)
                 
-                // Helper to get normalized position
                 const getNormalizedPos = (x: number, y: number) => ({
                   left: Math.max(5, Math.min(95, ((x - minX + padding) / rangeX) * 100)),
                   top: Math.max(5, Math.min(95, ((y - minY + padding) / rangeY) * 100))
                 })
                 
-                // Create node position map for edge rendering
                 const nodePositions = new Map(
                   nodes.map(n => [n.id, getNormalizedPos(n.position.x, n.position.y)])
                 )
                 
                 return (
                   <>
-                    {/* Render edges as SVG lines */}
                     <svg className="absolute inset-0 h-full w-full">
                       {edges.map((edge) => {
                         const sourcePos = nodePositions.get(edge.source)
@@ -980,20 +948,18 @@ export function GraphCanvas() {
                       })}
                     </svg>
                     
-                    {/* Render nodes */}
                     {nodes.map((node) => {
                       const data = node.data as CyberNodeData
                       const pos = nodePositions.get(node.id)!
                       
-// Map status to CSS variable colors
-                                      const statusColorMap: Record<NodeStatus, string> = {
-                                        "default": "var(--node-default)",
-                                        "in-progress": "var(--node-in-progress)",
-                                        "pending": "var(--node-pending)",
-                                        "success": "var(--node-success)",
-                                        "failed": "var(--node-failed)",
-                                        "interesting": "var(--node-interesting)",
-                                      }
+                      const statusColorMap: Record<NodeStatus, string> = {
+                        "default": "var(--node-default)",
+                        "in-progress": "var(--node-in-progress)",
+                        "pending": "var(--node-pending)",
+                        "success": "var(--node-success)",
+                        "failed": "var(--node-failed)",
+                        "interesting": "var(--node-interesting)",
+                      }
                       
                       return (
                         <div
@@ -1015,7 +981,6 @@ export function GraphCanvas() {
           </div>
         </div>
         
-        {/* Toggle Button */}
         <button
           onClick={() => setMinimapExpanded(!minimapExpanded)}
           className={`mt-1 flex h-7 w-full items-center justify-center gap-1 rounded border border-border bg-card/80 font-mono text-xs text-muted-foreground backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground ${

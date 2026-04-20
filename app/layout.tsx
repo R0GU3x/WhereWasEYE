@@ -7,25 +7,27 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'WhereWasEYE',
+  title: 'WhereWasEye Arena',
   description: 'Know where you were',
   generator: 'v0.app',
   icons: {
     icon: [
       {
-        url: '/icon-64x64.png',
+        url: '/wwe-128x128.png',
+        sizes: '128x128',
         media: '(prefers-color-scheme: light)',
       },
       {
-        url: '/icon-64x64.png',
+        url: '/wwe-128x128.png',
+        sizes: '128x128',
         media: '(prefers-color-scheme: dark)',
       },
       {
-        url: '/icon.png',
+        url: '/wwe-original.png',
         type: 'image/png',
       },
     ],
-    apple: '/icon.png',
+    apple: '/wwe-original.png',
   },
 }
 

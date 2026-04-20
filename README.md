@@ -1,7 +1,7 @@
 # WhereWasEYE [WWE] - Cyber Attack Graph Visualizer
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/R0GU3x/WhereWasEYE/master/public/icon.png" width="300" />
+  <img src="public/wwe-original.png" width="500" />
 </p>
 
 An interactive, real-time attack graph / cyber kill chain visualizer built for red teamers, blue teamers, and security professionals.
@@ -18,8 +18,11 @@ Visualize your attack paths, track compromise status, add notes, and export your
 - **Modern & Responsive UI**: Built with Next.js 15 and Tailwind CSS
 - **Keyboard Shortcuts** supported
 <br>
+<br>
 
-![WhereWasEYE Preview](https://github.com/R0GU3x/WhereWasEYE/blob/master/public/preview.png)
+<p align="center">
+  <img src="public/preview.png" width="" />
+</p>
 
 <br>
 

@@ -573,11 +573,23 @@ export function GraphCanvas() {
         }
       }
 
-      // Escape clears selection
+      // Escape clears selection and closes modals/panels
       if (e.key === "Escape" && !isInput) {
-        setSelectedNode(null)
-        setSelectedNodes(new Set())
-        setContextMenu(null)
+        if (snapshotModal) {
+          setSnapshotModal(false)
+        } else if (bulkDeleteModal) {
+          setBulkDeleteModal(false)
+        } else if (deleteConfirmNodeId) {
+          setDeleteConfirmNodeId(null)
+        } else if (clearCanvasModal) {
+          setClearCanvasModal(false)
+        } else if (showHelp) {
+          setShowHelp(false)
+        } else {
+          setSelectedNode(null)
+          setSelectedNodes(new Set())
+          setContextMenu(null)
+        }
       }
     }
 
@@ -596,7 +608,7 @@ export function GraphCanvas() {
       document.removeEventListener("keydown", handleKeyDown)
       document.removeEventListener("keyup", handleKeyUp)
     }
-  }, [selectedNode, selectedNodes, requestDeleteNode])
+  }, [selectedNode, selectedNodes, requestDeleteNode, snapshotModal, bulkDeleteModal, deleteConfirmNodeId, clearCanvasModal, showHelp])
 
   // Export function
   const handleExport = useCallback(() => {
@@ -831,14 +843,17 @@ export function GraphCanvas() {
         />
       </ReactFlow>
 
-      {/* Help Button */}
+      {/* Help Button & Version */}
       <div className="absolute bottom-4 left-4 z-10">
-        <button
-          onClick={() => setShowHelp(!showHelp)}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur-sm transition-all duration-300 hover:bg-muted hover:text-foreground"
-        >
-          {showHelp ? <X size={18} /> : <CircleHelp size={18} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowHelp(!showHelp)}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur-sm transition-all duration-300 hover:bg-muted hover:text-foreground"
+          >
+            {showHelp ? <X size={18} /> : <CircleHelp size={18} />}
+          </button>
+          <span className="font-mono text-xs text-muted-foreground/50">{APP_VERSION}</span>
+        </div>
 
         {/* Help Popup */}
         <div
@@ -933,10 +948,10 @@ export function GraphCanvas() {
           <div className="h-4 w-px bg-border" />
           <button
             onClick={() => setSnapshotModal(true)}
-            className="rounded px-3 py-1 text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex items-center gap-1"
+            className="rounded p-1.5 text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex items-center"
+            title="Snapshot selected nodes"
           >
             <Camera size={14} />
-            Snapshot
           </button>
           <button
             onClick={() => setBulkDeleteModal(true)}
@@ -1067,11 +1082,10 @@ export function GraphCanvas() {
         </button>
         <button
           onClick={() => setSnapshotModal(true)}
-          className="flex items-center gap-1.5 rounded border border-border bg-card/80 px-3 py-1.5 font-mono text-xs text-foreground backdrop-blur-sm transition-colors hover:bg-muted"
+          className="flex items-center justify-center rounded border border-border bg-card/80 p-1.5 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground"
           title="Take a snapshot of the canvas"
         >
           <Camera size={14} />
-          Snapshot
         </button>
         <button
           onClick={handleTidyEdges}
@@ -1098,10 +1112,7 @@ export function GraphCanvas() {
         </button>
       </div>
 
-      {/* Version Display */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
-        <span className="font-mono text-xs text-muted-foreground/50">{APP_VERSION}</span>
-      </div>
+      
 
       {/* Context Menu */}
       {contextMenu && (
@@ -1117,7 +1128,6 @@ export function GraphCanvas() {
           onDeleteEdge={handleDeleteEdge}
           onReverseEdge={handleReverseEdge}
           onClearCanvas={handleClearCanvasRequest}
-          onSnapshot={() => setSnapshotModal(true)}
         />
       )}
 
@@ -1133,8 +1143,14 @@ export function GraphCanvas() {
 
       {/* Bulk Delete Confirmation Modal */}
       {bulkDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleBulkDelete()
+            if (e.key === "Escape") setBulkDeleteModal(false)
+          }}
+        >
+          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4" tabIndex={-1} ref={(el) => el?.focus()}>
             <h3 className="mb-2 text-lg font-semibold text-foreground">Delete {selectedNodes.size} Node{selectedNodes.size !== 1 ? 's' : ''}?</h3>
             <p className="mb-6 text-sm text-muted-foreground">This action cannot be undone. All connected edges will also be removed.</p>
             <div className="flex gap-3 justify-end">
@@ -1157,8 +1173,14 @@ export function GraphCanvas() {
 
       {/* Single Node Delete Confirmation Modal */}
       {deleteConfirmNodeId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleConfirmDeleteNode()
+            if (e.key === "Escape") setDeleteConfirmNodeId(null)
+          }}
+        >
+          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4" tabIndex={-1} ref={(el) => el?.focus()}>
             <h3 className="mb-2 text-lg font-semibold text-foreground">Delete Node?</h3>
             <p className="mb-6 text-sm text-muted-foreground">This action cannot be undone. All connected edges will also be removed.</p>
             <div className="flex gap-3 justify-end">
@@ -1181,8 +1203,14 @@ export function GraphCanvas() {
 
       {/* Clear Canvas Confirmation Modal */}
       {clearCanvasModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleClearCanvas()
+            if (e.key === "Escape") setClearCanvasModal(false)
+          }}
+        >
+          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4" tabIndex={-1} ref={(el) => el?.focus()}>
             <h3 className="mb-2 text-lg font-semibold text-foreground">Clear Canvas?</h3>
             <p className="mb-6 text-sm text-muted-foreground">This will remove all nodes and edges. This action cannot be undone.</p>
             <div className="flex gap-3 justify-end">

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { X, Download, Sun, Moon, Image, FileCode, Check } from "lucide-react"
 import type { Node, Edge } from "@xyflow/react"
 import type { CyberNodeData, NodeStatus } from "./cyber-node"
@@ -61,6 +61,16 @@ export function SnapshotModal({
   const [format, setFormat] = useState<ExportFormat>("png")
   const [transparent, setTransparent] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
+  const modalRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    modalRef.current?.focus()
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [onClose])
 
   const exportNodes = selectedNodeIds && selectedNodeIds.size > 0
     ? nodes.filter((n) => selectedNodeIds.has(n.id))
@@ -204,7 +214,7 @@ export function SnapshotModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl mx-4">
+      <div ref={modalRef} tabIndex={-1} className="relative w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl mx-4 outline-none">
         <button
           onClick={onClose}
           className="absolute right-4 top-4 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"

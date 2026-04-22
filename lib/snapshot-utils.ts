@@ -1,5 +1,4 @@
 import html2canvas from "html2canvas"
-import jsPDF from "jspdf"
 
 export type SnapshotTheme = "light" | "dark"
 export type ExportFormat = "png" | "svg" | "pdf"
@@ -70,6 +69,9 @@ export async function exportSnapshot(
       link.download = `${fileName}.png`
       link.click()
     } else if (options.format === "pdf") {
+      // Dynamically import jsPDF only when needed
+      const { jsPDF } = await import("jspdf")
+      
       const pdf = new jsPDF({
         orientation: canvas.width > canvas.height ? "landscape" : "portrait",
         unit: "px",

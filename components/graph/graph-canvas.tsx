@@ -843,17 +843,14 @@ export function GraphCanvas() {
         />
       </ReactFlow>
 
-      {/* Help Button & Version */}
+      {/* Help Button */}
       <div className="absolute bottom-4 left-4 z-10">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowHelp(!showHelp)}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur-sm transition-all duration-300 hover:bg-muted hover:text-foreground"
-          >
-            {showHelp ? <X size={18} /> : <CircleHelp size={18} />}
-          </button>
-          <span className="font-mono text-xs text-muted-foreground/50">{APP_VERSION}</span>
-        </div>
+        <button
+          onClick={() => setShowHelp(!showHelp)}
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur-sm transition-all duration-300 hover:bg-muted hover:text-foreground"
+        >
+          {showHelp ? <X size={18} /> : <CircleHelp size={18} />}
+        </button>
 
         {/* Help Popup */}
         <div
@@ -901,6 +898,9 @@ export function GraphCanvas() {
               <span><strong>Escape:</strong> clear selection</span>
             </li>
           </ul>
+          <div className="mt-3 pt-3 border-t border-border">
+            <span className="font-mono text-xs text-muted-foreground/60">{APP_VERSION}</span>
+          </div>
         </div>
       </div>
 

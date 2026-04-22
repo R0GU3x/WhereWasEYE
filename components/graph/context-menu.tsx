@@ -16,6 +16,7 @@ interface ContextMenuProps {
   onDeleteEdge?: (edgeId: string) => void
   onReverseEdge?: (edgeId: string) => void
   onClearCanvas?: () => void
+  onSnapshot?: () => void
 }
 
 export function ContextMenu({
@@ -30,6 +31,7 @@ export function ContextMenu({
   onDeleteEdge,
   onReverseEdge,
   onClearCanvas,
+  onSnapshot,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ x, y })
@@ -165,6 +167,11 @@ export function ContextMenu({
           label: "Add Node",
           icon: "+",
           action: () => onAddNode(),
+        },
+        {
+          label: "Take Snapshot",
+          icon: "📷",
+          action: () => onSnapshot?.(),
         },
         { type: "separator" as const },
         {

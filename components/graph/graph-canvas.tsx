@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useState, useRef, useEffect } from "react"
-import { CircleHelp, X, ChevronDown, ChevronUp, Workflow } from "lucide-react"
+import { CircleHelp, X, ChevronDown, ChevronUp, Workflow, Volume2, VolumeX } from "lucide-react"
 import {
   ReactFlow,
   Background,
@@ -23,6 +23,10 @@ import { CyberNode, type CyberNodeData, type NodeStatus } from "./cyber-node"
 import { ContextMenu } from "./context-menu"
 import { DetailPanel } from "./detail-panel"
 import { CrossingEdge } from "./crossing-edge"
+import { useSoundEffects } from "@/lib/use-sound-effects"
+import { useSnapshot } from "@/lib/use-snapshot"
+import { SnapshotToolbar } from "@/components/snapshot-toolbar"
+import { VersionDisplay } from "@/components/version-display"
 
 const nodeTypes = {
   cyber: CyberNode,
@@ -67,6 +71,8 @@ export function GraphCanvas() {
   const [useTidyEdges, setUseTidyEdges] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
+  const { enabled: soundEnabled, toggle: toggleSound, play: playSound } = useSoundEffects()
+  const { isExporting } = useSnapshot()
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -133,8 +139,9 @@ export function GraphCanvas() {
         data: { useSmoothStep: useTidyEdges },
       }
       setEdges((eds) => addEdge(newEdge, eds))
+      playSound("edgeAttach")
     },
-    [setEdges, useTidyEdges]
+    [setEdges, useTidyEdges, playSound]
   )
 
   const createNode = useCallback(
@@ -195,6 +202,7 @@ export function GraphCanvas() {
 
       const newNode = createNode(position)
       setNodes((nds) => [...nds, newNode])
+      playSound("nodeCreate")
 
       if (parentId) {
         const newEdge: Edge = {
@@ -206,9 +214,10 @@ export function GraphCanvas() {
           data: { useSmoothStep: useTidyEdges },
         }
         setEdges((eds) => [...eds, newEdge])
+        playSound("edgeAttach")
       }
     },
-    [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges, useTidyEdges]
+    [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges, useTidyEdges, playSound]
   )
 
   const handleSetStatus = useCallback(
@@ -225,8 +234,9 @@ export function GraphCanvas() {
           prev ? { ...prev, data: { ...prev.data, status } } : null
         )
       }
+      playSound("statusChange")
     },
-    [setNodes, selectedNode]
+    [setNodes, selectedNode, playSound]
   )
 
   const requestDeleteNode = useCallback((nodeId: string) => {
@@ -243,7 +253,8 @@ export function GraphCanvas() {
       setSelectedNode(null)
     }
     setDeleteConfirmNodeId(null)
-  }, [setNodes, setEdges, selectedNode, deleteConfirmNodeId])
+    playSound("nodeDelete")
+  }, [setNodes, setEdges, selectedNode, deleteConfirmNodeId, playSound])
 
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
@@ -279,8 +290,9 @@ export function GraphCanvas() {
   const handleDeleteEdge = useCallback(
     (edgeId: string) => {
       setEdges((eds) => eds.filter((edge) => edge.id !== edgeId))
+      playSound("edgeDetach")
     },
-    [setEdges]
+    [setEdges, playSound]
   )
 
   const handleReverseEdge = useCallback(
@@ -733,7 +745,7 @@ export function GraphCanvas() {
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⢠⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣤⣿⣽⣻⢾⣽⣷⣾⣽⣻⣞⣷⣳⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣶⣄⡀⠀⠀⠀⣀⣲⣴⢶⣞⡿⣽⣞⡷⣯⢿⡽⣞⣿⠟⠋⠁⠉⠈⠳⣟⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⢶⣾⣿⡽⣯⣟⡾⣽⡷⣯⣟⡽⡾⣽⡯⠁⠀⠀⠀⠀⠀⠀⢮⣭⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⢞⣿⣿⢯⡿⣿⣯⣟⣷⣯⢿⣳⣟⡷⣽⣼⣻⣽⠀⠀⠀⠀⠀⠀⠀⢀⣼⡯⡗⠋⠤⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⢞⣿⣿⢯⡿⣿⣯⣟⣷⣯⢿⣳���⡷⣽⣼⣻⣽⠀⠀⠀⠀⠀⠀⠀⢀⣼⡯⡗⠋⠤⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⣿⣿⣯⣽⣾⣿⣾⣗⡿⣯⡷⣯⣟⡷⣞⣼⣿⣀⠀⠀⠀⠀⢀⣠⡿⣏⡗⠈⠐⠈⠅⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⠛⠏⠉⠉⠽⢟⢿⣿⣿⣿⣿⣷⣻⢾⡽⣞⡷⠄⡹⣶⢿⣻⢿⣻⡽⢯⣼⢦⠶⠁⠈⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣯⠇⠀⠀⠀⠀⠀⠁⣽⣿⣿⣿⣷⣯⣿⣽⣛⡦⠀⠀⢩⣿⣹⢯⣷⢻⣟⠺⢣⡖⣘⠤⠓⠀⠀⠀⠀⠀⠀
@@ -869,6 +881,10 @@ export function GraphCanvas() {
               <span><strong>Escape:</strong> clear selection</span>
             </li>
           </ul>
+          <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">WhereWasEYE</span>
+            <VersionDisplay />
+          </div>
         </div>
       </div>
 
@@ -1031,6 +1047,22 @@ export function GraphCanvas() {
 
       {/* Import/Export/Tidy buttons */}
       <div className="absolute right-4 bottom-4 z-10 flex gap-2">
+        {/* Sound Toggle */}
+        <button
+          onClick={toggleSound}
+          className="p-2 hover:bg-muted rounded transition-colors"
+          title={soundEnabled ? "Disable sound effects" : "Enable sound effects"}
+        >
+          {soundEnabled ? (
+            <Volume2 className="w-4 h-4" />
+          ) : (
+            <VolumeX className="w-4 h-4" />
+          )}
+        </button>
+
+        {/* Snapshot Export */}
+        <SnapshotToolbar containerRef={reactFlowWrapper} selectedNodesOnly={selectedNodes.size > 0} />
+
         <button
           onClick={handleTidyEdges}
           className={`flex items-center gap-1.5 rounded border px-3 py-1.5 font-mono text-xs backdrop-blur-sm transition-colors ${useTidyEdges

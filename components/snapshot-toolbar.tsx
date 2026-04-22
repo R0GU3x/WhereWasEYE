@@ -76,7 +76,6 @@ export function SnapshotToolbar({ containerRef, selectedNodesOnly }: SnapshotToo
               className="w-full px-3 py-2 rounded border border-border bg-muted text-foreground text-xs"
             >
               <option value="png">PNG</option>
-              <option value="pdf">PDF</option>
               <option value="svg">SVG</option>
             </select>
           </div>

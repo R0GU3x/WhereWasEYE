@@ -1,7 +1,7 @@
 import html2canvas from "html2canvas"
 
 export type SnapshotTheme = "light" | "dark"
-export type ExportFormat = "png" | "svg" | "pdf"
+export type ExportFormat = "png" | "svg"
 
 interface SnapshotOptions {
   theme: SnapshotTheme
@@ -10,37 +10,24 @@ interface SnapshotOptions {
   selectedNodesOnly: boolean
 }
 
-async function getCaptureElement(
-  container: HTMLElement,
-  selectedNodesOnly: boolean
-): Promise<HTMLElement> {
-  if (selectedNodesOnly) {
-    const rf = container.querySelector('[data-testid="rf__wrapper"]') as HTMLElement
-    if (!rf) {
-      throw new Error("React Flow wrapper not found")
-    }
-    return rf
-  }
-  return container
-}
-
 async function applyTheme(
   element: HTMLElement,
   theme: SnapshotTheme
-): Promise<HTMLElement> {
-  const clone = element.cloneNode(true) as HTMLElement
-  clone.style.position = "absolute"
-  clone.style.left = "-9999px"
-  clone.style.top = "-9999px"
-
+): Promise<() => void> {
+  const originalClass = element.className
+  
+  // Remove existing theme class
+  element.className = element.className.replace(/\bdark\b/, "").trim()
+  
+  // Add new theme class
   if (theme === "dark") {
-    clone.classList.add("dark")
-  } else {
-    clone.classList.remove("dark")
+    element.classList.add("dark")
   }
-
-  document.body.appendChild(clone)
-  return clone
+  
+  // Return cleanup function
+  return () => {
+    element.className = originalClass
+  }
 }
 
 export async function exportSnapshot(
@@ -48,17 +35,14 @@ export async function exportSnapshot(
   options: SnapshotOptions
 ): Promise<void> {
   try {
-    let captureElement = await getCaptureElement(container, options.selectedNodesOnly)
+    const cleanup = await applyTheme(container, options.theme)
 
-    if (options.theme === "light" || options.theme === "dark") {
-      captureElement = await applyTheme(captureElement, options.theme)
-    }
-
-    const canvas = await html2canvas(captureElement, {
+    const canvas = await html2canvas(container, {
       backgroundColor: options.transparent ? null : options.theme === "dark" ? "#1a1a1a" : "#ffffff",
       scale: 2,
       useCORS: true,
       logging: false,
+      allowTaint: true,
     })
 
     const fileName = `snapshot-${Date.now()}`
@@ -68,32 +52,44 @@ export async function exportSnapshot(
       link.href = canvas.toDataURL("image/png")
       link.download = `${fileName}.png`
       link.click()
-    } else if (options.format === "pdf") {
-      // Dynamically import jsPDF only when needed
-      const { jsPDF } = await import("jspdf")
-      
-      const pdf = new jsPDF({
-        orientation: canvas.width > canvas.height ? "landscape" : "portrait",
-        unit: "px",
-        format: [canvas.width, canvas.height],
-      })
-
-      const imgData = canvas.toDataURL("image/png")
-      pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height)
-      pdf.save(`${fileName}.pdf`)
     } else if (options.format === "svg") {
-      // SVG export using canvas as base
+      // SVG export: create SVG wrapper with embedded PNG
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+      svg.setAttribute("width", String(canvas.width))
+      svg.setAttribute("height", String(canvas.height))
+      svg.setAttribute("viewBox", `0 0 ${canvas.width} ${canvas.height}`)
+      svg.setAttribute("xmlns", "http://www.w3.org/2000/svg")
+      
+      // Add background if not transparent
+      if (!options.transparent) {
+        const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect")
+        bg.setAttribute("width", String(canvas.width))
+        bg.setAttribute("height", String(canvas.height))
+        bg.setAttribute("fill", options.theme === "dark" ? "#1a1a1a" : "#ffffff")
+        svg.appendChild(bg)
+      }
+
+      // Embed canvas as image
+      const image = document.createElementNS("http://www.w3.org/2000/svg", "image")
+      image.setAttributeNS("http://www.w3.org/1999/xlink", "href", canvas.toDataURL("image/png"))
+      image.setAttribute("width", String(canvas.width))
+      image.setAttribute("height", String(canvas.height))
+      svg.appendChild(image)
+
+      // Download SVG
+      const svgString = new XMLSerializer().serializeToString(svg)
+      const blob = new Blob([svgString], { type: "image/svg+xml" })
+      const url = URL.createObjectURL(blob)
+      
       const link = document.createElement("a")
-      link.href = canvas.toDataURL("image/png")
+      link.href = url
       link.download = `${fileName}.svg`
       link.click()
+      
+      URL.revokeObjectURL(url)
     }
 
-    // Clean up
-    if (options.theme === "light" || options.theme === "dark") {
-      const clone = document.querySelector('[style*="left: -9999px"]')
-      if (clone) clone.remove()
-    }
+    cleanup()
   } catch (error) {
     console.error("[v0] Snapshot export failed:", error)
     throw error

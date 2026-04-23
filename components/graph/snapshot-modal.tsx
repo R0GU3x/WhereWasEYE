@@ -152,63 +152,54 @@ export function SnapshotModal({
 
   const handleCopyToClipboard = useCallback(async () => {
     try {
-      if (format === "svg") {
-        const svgString = generateSVG()
-        await navigator.clipboard.writeText(svgString)
-      } else {
-        // For PNG, we copy the data URL to clipboard
-        const svgString = generateSVG()
-        const img = new window.Image()
-        img.crossOrigin = "anonymous"
+      const svgString = generateSVG()
+      const img = new window.Image()
+      img.crossOrigin = "anonymous"
 
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => {
-            const canvas = document.createElement("canvas")
-            const scale = 2
-            canvas.width = img.width * scale
-            canvas.height = img.height * scale
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => {
+          const canvas = document.createElement("canvas")
+          const scale = 2
+          canvas.width = img.width * scale
+          canvas.height = img.height * scale
 
-            const ctx = canvas.getContext("2d")
-            if (!ctx) {
-              reject(new Error("Canvas context not available"))
-              return
-            }
-
-            ctx.scale(scale, scale)
-
-            if (!transparent) {
-              const theme = themeMode === "light" ? LIGHT_THEME : DARK_THEME
-              ctx.fillStyle = theme.background
-              ctx.fillRect(0, 0, img.width, img.height)
-            }
-
-            ctx.drawImage(img, 0, 0)
-
-            canvas.toBlob(
-              async (blob) => {
-                if (blob) {
-                  try {
-                    const items = new ClipboardItem({ "image/png": blob })
-                    await navigator.clipboard.write(items)
-                    resolve()
-                  } catch (err) {
-                    // Fallback: copy data URL
-                    const dataUrl = canvas.toDataURL("image/png")
-                    await navigator.clipboard.writeText(dataUrl)
-                    resolve()
-                  }
-                } else {
-                  reject(new Error("Failed to create blob"))
-                }
-              },
-              "image/png",
-              1.0
-            )
+          const ctx = canvas.getContext("2d")
+          if (!ctx) {
+            reject(new Error("Canvas context not available"))
+            return
           }
-          img.onerror = reject
-          img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgString)
-        })
-      }
+
+          ctx.scale(scale, scale)
+
+          if (!transparent) {
+            const theme = themeMode === "light" ? LIGHT_THEME : DARK_THEME
+            ctx.fillStyle = theme.background
+            ctx.fillRect(0, 0, img.width, img.height)
+          }
+
+          ctx.drawImage(img, 0, 0)
+
+          canvas.toBlob(
+            async (blob) => {
+              if (blob) {
+                try {
+                  const items = new ClipboardItem({ "image/png": blob })
+                  await navigator.clipboard.write(items)
+                  resolve()
+                } catch (err) {
+                  reject(err)
+                }
+              } else {
+                reject(new Error("Failed to create blob"))
+              }
+            },
+            "image/png",
+            1.0
+          )
+        }
+        img.onerror = reject
+        img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgString)
+      })
 
       setCopiedFormat(format)
       setTimeout(() => setCopiedFormat(null), 2000)

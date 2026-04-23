@@ -899,8 +899,8 @@ export function GraphCanvas() {
             </li>
           </ul>
           <div className="mt-3 pt-3 border-t border-border">
-            <div className="inline-block px-3 py-1.5 rounded-md bg-primary/20 border border-primary/40 animate-pulse">
-              <span className="font-mono text-sm font-semibold text-primary tracking-wider">{APP_VERSION}</span>
+            <div className="inline-block px-2 py-1 rounded-md bg-primary/20 border border-primary/40 animate-pulse">
+              <span className="font-mono text-xs font-semibold text-primary tracking-wider">{APP_VERSION}</span>
             </div>
           </div>
         </div>

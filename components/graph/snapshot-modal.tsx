@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
-import { X, Download, Sun, Moon, Image, FileCode, Check } from "lucide-react"
+import { X, Download, Sun, Moon, Image, FileCode, Check, Copy } from "lucide-react"
 import type { Node, Edge } from "@xyflow/react"
 import type { CyberNodeData, NodeStatus } from "./cyber-node"
 
@@ -61,6 +61,7 @@ export function SnapshotModal({
   const [format, setFormat] = useState<ExportFormat>("png")
   const [transparent, setTransparent] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
+  const [copiedFormat, setCopiedFormat] = useState<ExportFormat | null>(null)
   const modalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -148,6 +149,75 @@ export function SnapshotModal({
     svg += `</svg>`
     return svg
   }, [exportNodes, exportEdges, themeMode, transparent])
+
+  const handleCopyToClipboard = useCallback(async () => {
+    try {
+      const svgString = generateSVG()
+      const img = new window.Image()
+      img.crossOrigin = "anonymous"
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => {
+          const canvas = document.createElement("canvas")
+          const scale = 2
+          canvas.width = img.width * scale
+          canvas.height = img.height * scale
+
+          const ctx = canvas.getContext("2d")
+          if (!ctx) {
+            reject(new Error("Canvas context not available"))
+            return
+          }
+
+          ctx.scale(scale, scale)
+
+          if (!transparent) {
+            const theme = themeMode === "light" ? LIGHT_THEME : DARK_THEME
+            ctx.fillStyle = theme.background
+            ctx.fillRect(0, 0, img.width, img.height)
+          }
+
+          ctx.drawImage(img, 0, 0)
+
+          canvas.toBlob(async (blob) => {
+            if (!blob) {
+              reject(new Error("Failed to create blob"))
+              return
+            }
+
+            try {
+              // Try modern Clipboard API first
+              if (navigator.clipboard && navigator.clipboard.write) {
+                await navigator.clipboard.write([
+                  new ClipboardItem({ "image/png": blob })
+                ])
+              } else {
+                // Fallback: convert to data URL and copy as text
+                const reader = new FileReader()
+                reader.onload = async () => {
+                  const dataUrl = reader.result as string
+                  await navigator.clipboard.writeText(dataUrl)
+                }
+                reader.onerror = () => reject(new Error("Failed to read blob"))
+                reader.readAsDataURL(blob)
+                return
+              }
+              resolve()
+            } catch (clipErr) {
+              reject(clipErr)
+            }
+          })
+        }
+        img.onerror = reject
+        img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgString)
+      })
+
+      setCopiedFormat(format)
+      setTimeout(() => setCopiedFormat(null), 2000)
+    } catch (err) {
+      console.error("Copy failed:", err)
+    }
+  }, [format, generateSVG, themeMode, transparent])
 
   const handleExport = useCallback(async () => {
     setIsExporting(true)
@@ -308,21 +378,39 @@ export function SnapshotModal({
           </button>
         </div>
 
-        {/* Export Button */}
-        <button
-          onClick={handleExport}
-          disabled={isExporting}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-        >
-          {isExporting ? (
-            "Exporting..."
-          ) : (
-            <>
-              <Download size={16} />
-              Export {format.toUpperCase()}
-            </>
-          )}
-        </button>
+        {/* Copy and Export Buttons */}
+        <div className="flex gap-2 w-full">
+          <button
+            onClick={handleCopyToClipboard}
+            className="flex items-center justify-center gap-2 rounded-lg bg-secondary/20 px-4 py-3 font-medium text-secondary-foreground transition-colors hover:bg-secondary/30 border border-secondary/40 flex-1"
+          >
+            {copiedFormat === format ? (
+              <>
+                <Check size={16} className="text-green-500" />
+                Copied!
+              </>
+            ) : (
+              <>
+                <Copy size={16} />
+                Copy {format.toUpperCase()}
+              </>
+            )}
+          </button>
+          <button
+            onClick={handleExport}
+            disabled={isExporting}
+            className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 flex-1"
+          >
+            {isExporting ? (
+              "Exporting..."
+            ) : (
+              <>
+                <Download size={16} />
+                Export {format.toUpperCase()}
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   )

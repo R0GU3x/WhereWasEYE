@@ -26,7 +26,7 @@ import { CrossingEdge } from "./crossing-edge"
 import { SnapshotModal } from "./snapshot-modal"
 import { useSound } from "@/hooks/use-sound"
 
-const APP_VERSION = "v4.7.1"
+const APP_VERSION = "v4.7.2"
 
 const nodeTypes = {
   cyber: CyberNode,
@@ -526,7 +526,7 @@ export function GraphCanvas() {
         y: y,
         zoom: reactFlowInstance.getZoom(),
       })
-    // Ctrl/Cmd + scroll: zoom
+      // Ctrl/Cmd + scroll: zoom
     } else if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
       const currentZoom = reactFlowInstance.getZoom()
@@ -540,7 +540,7 @@ export function GraphCanvas() {
         const flowPos = reactFlowInstance.screenToFlowPosition({ x: cursorX, y: cursorY })
         reactFlowInstance.setCenter(flowPos.x, flowPos.y, { zoom: newZoom, duration: 0 })
       }
-    // Normal scroll: vertical panning
+      // Normal scroll: vertical panning
     } else if (!e.shiftKey) {
       e.preventDefault()
       const { x, y } = reactFlowInstance.getViewport()
@@ -855,11 +855,21 @@ export function GraphCanvas() {
         {/* Help Popup */}
         <div
           className={`absolute bottom-14 left-0 w-72 origin-bottom-left rounded-lg border border-border bg-card/95 p-4 backdrop-blur-md transition-all duration-300 ease-out ${showHelp
-            ? "scale-100 opacity-100 translate-y-0"
-            : "scale-95 opacity-0 translate-y-2 pointer-events-none"
+              ? "scale-100 opacity-100 translate-y-0"
+              : "scale-95 opacity-0 translate-y-2 pointer-events-none"
             }`}
         >
-          <h4 className="mb-3 font-mono text-sm font-semibold text-foreground">Quick Guide</h4>
+          {/* Header Row */}
+          <div className="mb-3 flex items-center justify-between">
+            <h4 className="font-mono text-sm font-semibold text-foreground">
+              Quick Guide
+            </h4>
+
+            <span className="font-mono text-[10px] font-semibold text-primary tracking-wide animate-pulse">
+              {APP_VERSION}
+            </span>
+          </div>
+
           <ul className="space-y-2 font-mono text-xs text-muted-foreground">
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
@@ -898,9 +908,6 @@ export function GraphCanvas() {
               <span><strong>Escape:</strong> clear selection</span>
             </li>
           </ul>
-          <div className="mt-3 pt-3 border-t border-border">
-            <span className="font-mono text-xs text-muted-foreground/60">{APP_VERSION}</span>
-          </div>
         </div>
       </div>
 
@@ -946,13 +953,6 @@ export function GraphCanvas() {
             Reset
           </button>
           <div className="h-4 w-px bg-border" />
-          <button
-            onClick={() => setSnapshotModal(true)}
-            className="rounded p-1.5 text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex items-center"
-            title="Snapshot selected nodes"
-          >
-            <Camera size={14} />
-          </button>
           <button
             onClick={() => setBulkDeleteModal(true)}
             className="rounded px-3 py-1 text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
@@ -1112,7 +1112,7 @@ export function GraphCanvas() {
         </button>
       </div>
 
-      
+
 
       {/* Context Menu */}
       {contextMenu && (

@@ -26,7 +26,7 @@ import { CrossingEdge } from "./crossing-edge"
 import { SnapshotModal } from "./snapshot-modal"
 import { useSound } from "@/hooks/use-sound"
 
-const APP_VERSION = "v4.7.1"
+const APP_VERSION = "v4.7.2"
 
 const nodeTypes = {
   cyber: CyberNode,
@@ -899,7 +899,9 @@ export function GraphCanvas() {
             </li>
           </ul>
           <div className="mt-3 pt-3 border-t border-border">
-            <span className="font-mono text-xs text-muted-foreground/60">{APP_VERSION}</span>
+            <div className="inline-block px-3 py-1.5 rounded-md bg-primary/20 border border-primary/40 animate-pulse">
+              <span className="font-mono text-sm font-semibold text-primary tracking-wider">{APP_VERSION}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -946,13 +948,6 @@ export function GraphCanvas() {
             Reset
           </button>
           <div className="h-4 w-px bg-border" />
-          <button
-            onClick={() => setSnapshotModal(true)}
-            className="rounded p-1.5 text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex items-center"
-            title="Snapshot selected nodes"
-          >
-            <Camera size={14} />
-          </button>
           <button
             onClick={() => setBulkDeleteModal(true)}
             className="rounded px-3 py-1 text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"

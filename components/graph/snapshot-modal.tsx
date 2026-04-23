@@ -179,23 +179,34 @@ export function SnapshotModal({
 
           ctx.drawImage(img, 0, 0)
 
-          canvas.toBlob(
-            async (blob) => {
-              if (blob) {
-                try {
-                  const items = new ClipboardItem({ "image/png": blob })
-                  await navigator.clipboard.write(items)
-                  resolve()
-                } catch (err) {
-                  reject(err)
-                }
+          canvas.toBlob(async (blob) => {
+            if (!blob) {
+              reject(new Error("Failed to create blob"))
+              return
+            }
+
+            try {
+              // Try modern Clipboard API first
+              if (navigator.clipboard && navigator.clipboard.write) {
+                await navigator.clipboard.write([
+                  new ClipboardItem({ "image/png": blob })
+                ])
               } else {
-                reject(new Error("Failed to create blob"))
+                // Fallback: convert to data URL and copy as text
+                const reader = new FileReader()
+                reader.onload = async () => {
+                  const dataUrl = reader.result as string
+                  await navigator.clipboard.writeText(dataUrl)
+                }
+                reader.onerror = () => reject(new Error("Failed to read blob"))
+                reader.readAsDataURL(blob)
+                return
               }
-            },
-            "image/png",
-            1.0
-          )
+              resolve()
+            } catch (clipErr) {
+              reject(clipErr)
+            }
+          })
         }
         img.onerror = reject
         img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgString)

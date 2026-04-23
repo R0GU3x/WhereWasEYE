@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useState, useRef, useEffect } from "react"
-import { CircleHelp, X, ChevronDown, ChevronUp, Workflow } from "lucide-react"
+import { CircleHelp, X, ChevronDown, ChevronUp, Workflow, Camera, Volume2, VolumeX } from "lucide-react"
 import {
   ReactFlow,
   Background,
@@ -23,6 +23,10 @@ import { CyberNode, type CyberNodeData, type NodeStatus } from "./cyber-node"
 import { ContextMenu } from "./context-menu"
 import { DetailPanel } from "./detail-panel"
 import { CrossingEdge } from "./crossing-edge"
+import { SnapshotModal } from "./snapshot-modal"
+import { useSound } from "@/hooks/use-sound"
+
+const APP_VERSION = "v4.7.1"
 
 const nodeTypes = {
   cyber: CyberNode,
@@ -65,8 +69,10 @@ export function GraphCanvas() {
   const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(null)
   const [clearCanvasModal, setClearCanvasModal] = useState(false)
   const [useTidyEdges, setUseTidyEdges] = useState(false)
+  const [snapshotModal, setSnapshotModal] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
+  const { soundEnabled, toggleSound, playSound } = useSound()
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -133,8 +139,9 @@ export function GraphCanvas() {
         data: { useSmoothStep: useTidyEdges },
       }
       setEdges((eds) => addEdge(newEdge, eds))
+      playSound("edgeConnect")
     },
-    [setEdges, useTidyEdges]
+    [setEdges, useTidyEdges, playSound]
   )
 
   const createNode = useCallback(
@@ -195,6 +202,7 @@ export function GraphCanvas() {
 
       const newNode = createNode(position)
       setNodes((nds) => [...nds, newNode])
+      playSound("nodeCreate")
 
       if (parentId) {
         const newEdge: Edge = {
@@ -208,7 +216,7 @@ export function GraphCanvas() {
         setEdges((eds) => [...eds, newEdge])
       }
     },
-    [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges, useTidyEdges]
+    [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges, useTidyEdges, playSound]
   )
 
   const handleSetStatus = useCallback(
@@ -225,8 +233,9 @@ export function GraphCanvas() {
           prev ? { ...prev, data: { ...prev.data, status } } : null
         )
       }
+      playSound("statusChange")
     },
-    [setNodes, selectedNode]
+    [setNodes, selectedNode, playSound]
   )
 
   const requestDeleteNode = useCallback((nodeId: string) => {
@@ -243,7 +252,8 @@ export function GraphCanvas() {
       setSelectedNode(null)
     }
     setDeleteConfirmNodeId(null)
-  }, [setNodes, setEdges, selectedNode, deleteConfirmNodeId])
+    playSound("nodeDelete")
+  }, [setNodes, setEdges, selectedNode, deleteConfirmNodeId, playSound])
 
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
@@ -254,8 +264,9 @@ export function GraphCanvas() {
       if (selectedNode?.id === nodeId) {
         setSelectedNode(null)
       }
+      playSound("nodeDelete")
     },
-    [setNodes, setEdges, selectedNode]
+    [setNodes, setEdges, selectedNode, playSound]
   )
 
   const handleUpdateNode = useCallback(
@@ -279,8 +290,9 @@ export function GraphCanvas() {
   const handleDeleteEdge = useCallback(
     (edgeId: string) => {
       setEdges((eds) => eds.filter((edge) => edge.id !== edgeId))
+      playSound("edgeDisconnect")
     },
-    [setEdges]
+    [setEdges, playSound]
   )
 
   const handleReverseEdge = useCallback(
@@ -292,8 +304,9 @@ export function GraphCanvas() {
             : edge
         )
       )
+      playSound("click")
     },
-    [setEdges]
+    [setEdges, playSound]
   )
 
   const handleTidyEdges = useCallback(() => {
@@ -308,7 +321,8 @@ export function GraphCanvas() {
       )
       return newValue
     })
-  }, [setEdges])
+    playSound("click")
+  }, [setEdges, playSound])
 
   const onNodeContextMenu: NodeMouseHandler = useCallback(
     (event, node) => {
@@ -559,11 +573,23 @@ export function GraphCanvas() {
         }
       }
 
-      // Escape clears selection
+      // Escape clears selection and closes modals/panels
       if (e.key === "Escape" && !isInput) {
-        setSelectedNode(null)
-        setSelectedNodes(new Set())
-        setContextMenu(null)
+        if (snapshotModal) {
+          setSnapshotModal(false)
+        } else if (bulkDeleteModal) {
+          setBulkDeleteModal(false)
+        } else if (deleteConfirmNodeId) {
+          setDeleteConfirmNodeId(null)
+        } else if (clearCanvasModal) {
+          setClearCanvasModal(false)
+        } else if (showHelp) {
+          setShowHelp(false)
+        } else {
+          setSelectedNode(null)
+          setSelectedNodes(new Set())
+          setContextMenu(null)
+        }
       }
     }
 
@@ -582,7 +608,7 @@ export function GraphCanvas() {
       document.removeEventListener("keydown", handleKeyDown)
       document.removeEventListener("keyup", handleKeyUp)
     }
-  }, [selectedNode, selectedNodes, requestDeleteNode])
+  }, [selectedNode, selectedNodes, requestDeleteNode, snapshotModal, bulkDeleteModal, deleteConfirmNodeId, clearCanvasModal, showHelp])
 
   // Export function
   const handleExport = useCallback(() => {
@@ -657,8 +683,9 @@ export function GraphCanvas() {
       )
       setNodes(updatedNodes)
       setSelectedNodes(new Set())
+      playSound("statusChange")
     },
-    [nodes, selectedNodes, setNodes]
+    [nodes, selectedNodes, setNodes, playSound]
   )
 
   // Bulk delete with confirmation
@@ -671,7 +698,8 @@ export function GraphCanvas() {
     setEdges(newEdges)
     setBulkDeleteModal(false)
     setSelectedNodes(new Set())
-  }, [nodes, edges, selectedNodes, setNodes, setEdges])
+    playSound("nodeDelete")
+  }, [nodes, edges, selectedNodes, setNodes, setEdges, playSound])
 
   // Clear canvas handler
   const handleClearCanvasRequest = useCallback(() => {
@@ -685,7 +713,8 @@ export function GraphCanvas() {
     setSelectedNodes(new Set())
     localStorage.removeItem("cyber-graph-data")
     setClearCanvasModal(false)
-  }, [setNodes, setEdges])
+    playSound("nodeDelete")
+  }, [setNodes, setEdges, playSound])
 
   // Check if canvas is empty
   const isCanvasEmpty = nodes.length === 0
@@ -869,6 +898,9 @@ export function GraphCanvas() {
               <span><strong>Escape:</strong> clear selection</span>
             </li>
           </ul>
+          <div className="mt-3 pt-3 border-t border-border">
+            <span className="font-mono text-xs text-muted-foreground/60">{APP_VERSION}</span>
+          </div>
         </div>
       </div>
 
@@ -914,6 +946,13 @@ export function GraphCanvas() {
             Reset
           </button>
           <div className="h-4 w-px bg-border" />
+          <button
+            onClick={() => setSnapshotModal(true)}
+            className="rounded p-1.5 text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex items-center"
+            title="Snapshot selected nodes"
+          >
+            <Camera size={14} />
+          </button>
           <button
             onClick={() => setBulkDeleteModal(true)}
             className="rounded px-3 py-1 text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
@@ -1032,6 +1071,23 @@ export function GraphCanvas() {
       {/* Import/Export/Tidy buttons */}
       <div className="absolute right-4 bottom-4 z-10 flex gap-2">
         <button
+          onClick={toggleSound}
+          className={`flex items-center justify-center rounded border p-1.5 backdrop-blur-sm transition-colors ${soundEnabled
+            ? "border-primary bg-primary/20 text-primary"
+            : "border-border bg-card/80 text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          title={soundEnabled ? "Disable sound effects" : "Enable sound effects"}
+        >
+          {soundEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+        </button>
+        <button
+          onClick={() => setSnapshotModal(true)}
+          className="flex items-center justify-center rounded border border-border bg-card/80 p-1.5 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground"
+          title="Take a snapshot of the canvas"
+        >
+          <Camera size={14} />
+        </button>
+        <button
           onClick={handleTidyEdges}
           className={`flex items-center gap-1.5 rounded border px-3 py-1.5 font-mono text-xs backdrop-blur-sm transition-colors ${useTidyEdges
             ? "border-primary bg-primary/20 text-primary"
@@ -1055,6 +1111,8 @@ export function GraphCanvas() {
           Export
         </button>
       </div>
+
+      
 
       {/* Context Menu */}
       {contextMenu && (
@@ -1085,8 +1143,14 @@ export function GraphCanvas() {
 
       {/* Bulk Delete Confirmation Modal */}
       {bulkDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleBulkDelete()
+            if (e.key === "Escape") setBulkDeleteModal(false)
+          }}
+        >
+          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4" tabIndex={-1} ref={(el) => el?.focus()}>
             <h3 className="mb-2 text-lg font-semibold text-foreground">Delete {selectedNodes.size} Node{selectedNodes.size !== 1 ? 's' : ''}?</h3>
             <p className="mb-6 text-sm text-muted-foreground">This action cannot be undone. All connected edges will also be removed.</p>
             <div className="flex gap-3 justify-end">
@@ -1109,8 +1173,14 @@ export function GraphCanvas() {
 
       {/* Single Node Delete Confirmation Modal */}
       {deleteConfirmNodeId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleConfirmDeleteNode()
+            if (e.key === "Escape") setDeleteConfirmNodeId(null)
+          }}
+        >
+          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4" tabIndex={-1} ref={(el) => el?.focus()}>
             <h3 className="mb-2 text-lg font-semibold text-foreground">Delete Node?</h3>
             <p className="mb-6 text-sm text-muted-foreground">This action cannot be undone. All connected edges will also be removed.</p>
             <div className="flex gap-3 justify-end">
@@ -1133,8 +1203,14 @@ export function GraphCanvas() {
 
       {/* Clear Canvas Confirmation Modal */}
       {clearCanvasModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleClearCanvas()
+            if (e.key === "Escape") setClearCanvasModal(false)
+          }}
+        >
+          <div className="rounded-lg border border-border bg-card p-6 shadow-xl max-w-sm mx-4" tabIndex={-1} ref={(el) => el?.focus()}>
             <h3 className="mb-2 text-lg font-semibold text-foreground">Clear Canvas?</h3>
             <p className="mb-6 text-sm text-muted-foreground">This will remove all nodes and edges. This action cannot be undone.</p>
             <div className="flex gap-3 justify-end">
@@ -1153,6 +1229,17 @@ export function GraphCanvas() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Snapshot Modal */}
+      {snapshotModal && (
+        <SnapshotModal
+          nodes={nodes}
+          edges={edges}
+          selectedNodeIds={selectedNodes.size > 0 ? selectedNodes : undefined}
+          onClose={() => setSnapshotModal(false)}
+          onExport={() => playSound("success")}
+        />
       )}
     </div>
   )

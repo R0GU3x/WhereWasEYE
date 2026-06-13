@@ -9,6 +9,7 @@ interface CrossingEdgeProps extends EdgeProps {
     useSmoothStep?: boolean
     isHighlighted?: boolean
     bendPoints?: Array<{ x: number; y: number }>
+    isSelected?: boolean
   }
 }
 
@@ -70,20 +71,22 @@ function CrossingEdgeComponent({
   const { getEdges, getNodes, setEdges } = useReactFlow()
   const useSmoothStep = data?.useSmoothStep ?? false
   const isHighlighted = data?.isHighlighted ?? false
+  const isSelected = data?.isSelected ?? false
   const bendPoints = data?.bendPoints ?? []
   const [isDraggingBend, setIsDraggingBend] = useState<number | null>(null)
 
-  // Apply highlight styles
+  // Apply highlight styles with higher z-index and distinct color
   const highlightedStyle = isHighlighted ? {
     ...style,
-    stroke: "oklch(0.7 0.2 180)",
+    stroke: "#06b6d4",
     strokeWidth: 4,
     opacity: 1,
+    zIndex: 1000,
   } : style
 
   const highlightedMarkerEnd = isHighlighted ? {
     ...markerEnd,
-    color: "oklch(0.7 0.2 180)",
+    color: "#06b6d4",
   } : markerEnd
 
   // Generate path based on routing type
@@ -160,12 +163,61 @@ function CrossingEdgeComponent({
     return crossings
   }, [getEdges, getNodes, id, sourceX, sourceY, targetX, targetY, bendPoints])
 
-  // Handle bend point dragging
+  // Handle bend point dragging with orthogonal constraints
   const handleBendMouseDown = useCallback((index: number, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setIsDraggingBend(index)
-  }, [])
+    
+    const startX = e.clientX
+    const startY = e.clientY
+    const startBend = bendPoints[index]
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX
+      const deltaY = moveEvent.clientY - startY
+      
+      const newBendPoints = [...bendPoints]
+      const bend = { ...startBend }
+      
+      // For orthogonal routing, alternate between horizontal and vertical constraints
+      // Even indices (0, 2, 4...) move horizontally, odd indices (1, 3, 5...) move vertically
+      if (index % 2 === 0) {
+        // Even: horizontal movement constrained
+        bend.x = startBend.x + deltaX
+      } else {
+        // Odd: vertical movement constrained
+        bend.y = startBend.y + deltaY
+      }
+      
+      newBendPoints[index] = bend
+      
+      // Update edge data with new routing
+      const edges = getEdges()
+      const updatedEdges = edges.map((edge) =>
+        edge.id === id
+          ? { ...edge, data: { ...edge.data, bendPoints: newBendPoints } }
+          : edge
+      )
+      setEdges(updatedEdges)
+    }
+    
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove)
+      document.removeEventListener("mouseup", handleMouseUp)
+      
+      // Save final state to history
+      const finalEdges = getEdges()
+      const finalState = {
+        nodes: getNodes().map(n => ({ ...n })),
+        edges: finalEdges.map(e => ({ ...e })),
+        useTidyEdges: false
+      }
+      // Note: history saving should be done by parent component
+    }
+    
+    document.addEventListener("mousemove", handleMouseMove)
+    document.addEventListener("mouseup", handleMouseUp)
+  }, [bendPoints, getEdges, setEdges, getNodes, id])
 
   return (
     <>
@@ -186,8 +238,8 @@ function CrossingEdgeComponent({
           </div>
         ))}
         
-        {/* Draggable bend points for orthogonal routing */}
-        {bendPoints.map((point, index) => (
+        {/* Draggable bend points - only show when edge is selected */}
+        {isSelected && bendPoints.map((point, index) => (
           <div
             key={`${id}-bend-${index}`}
             onMouseDown={(e) => handleBendMouseDown(index, e)}

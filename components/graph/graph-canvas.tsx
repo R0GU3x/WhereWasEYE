@@ -60,6 +60,7 @@ export function GraphCanvas() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [selectedNode, setSelectedNode] = useState<Node<CyberNodeData> | null>(null)
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set())
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [minimapExpanded, setMinimapExpanded] = useState(true)
   const [isShiftHeld, setIsShiftHeld] = useState(false)
@@ -353,24 +354,35 @@ export function GraphCanvas() {
 
   const handleDeleteEdge = useCallback(
     (edgeId: string) => {
-      setEdges((eds) => eds.filter((edge) => edge.id !== edgeId))
+      setEdges((eds) => {
+        const updatedEdges = eds.filter((edge) => edge.id !== edgeId)
+        // Save to history after edge deletion
+        const state: GraphState = { nodes, edges: updatedEdges, useTidyEdges }
+        history.push(state, "Edge deleted")
+        return updatedEdges
+      })
+      setSelectedEdge(null)
       playSound("edgeDisconnect")
     },
-    [setEdges, playSound]
+    [setEdges, playSound, nodes, history, useTidyEdges]
   )
 
   const handleReverseEdge = useCallback(
     (edgeId: string) => {
-      setEdges((eds) =>
-        eds.map((edge) =>
+      setEdges((eds) => {
+        const updatedEdges = eds.map((edge) =>
           edge.id === edgeId
             ? { ...edge, source: edge.target, target: edge.source }
             : edge
         )
-      )
+        // Save to history after edge reversal
+        const state: GraphState = { nodes, edges: updatedEdges, useTidyEdges }
+        history.push(state, "Edge reversed")
+        return updatedEdges
+      })
       playSound("click")
     },
-    [setEdges, playSound]
+    [setEdges, playSound, nodes, history, useTidyEdges]
   )
 
   const handleTidyEdges = useCallback(() => {
@@ -403,6 +415,7 @@ export function GraphCanvas() {
   const onEdgeContextMenu = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
       event.preventDefault()
+      setSelectedEdge(edge)
       setContextMenu({
         x: event.clientX,
         y: event.clientY,
@@ -454,9 +467,17 @@ export function GraphCanvas() {
     []
   )
 
+  const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.stopPropagation()
+    setSelectedEdge(edge)
+    setSelectedNode(null)
+    setSelectedNodes(new Set())
+  }, [])
+
   const onPaneClick = useCallback(() => {
     if (!isDrawingSelectBox) {
       setSelectedNode(null)
+      setSelectedEdge(null)
       if (!isShiftHeld) {
         setSelectedNodes(new Set())
       }
@@ -685,6 +706,7 @@ export function GraphCanvas() {
         } else {
           setSelectedNode(null)
           setSelectedNodes(new Set())
+          setSelectedEdge(null)
           setContextMenu(null)
         }
       }
@@ -941,10 +963,10 @@ export function GraphCanvas() {
             {/* ASCII Art Style Robot/Hacker */}
             <pre className="font-mono text-xs text-muted-foreground leading-none select-none">
               {`
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⢰⠂⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠉⣷⠀⠀⢸⡄⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡄⠀⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡄⠀⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡸⣞⡇⠀⠀⠀⣼⡿⠀⠀⠀⠀⠉⠉⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣧⢿⣽⡀⠀⠉⠛⠁⠀⣰⣾⠿⠿⣦⡀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀��⠀⠀⠀⠀⣼⣞⡿⣞⡅⠀⠀⠀⠀⠘⠏⠓⠒⠒⠀⠀⠀⠀⠀⠀
@@ -996,6 +1018,7 @@ export function GraphCanvas() {
           data: {
             ...edge.data,
             isHighlighted: highlightedEdgeIds.has(edge.id),
+            isSelected: selectedEdge?.id === edge.id,
           }
         }))}
         onNodesChange={handleNodesChange}
@@ -1007,6 +1030,7 @@ export function GraphCanvas() {
         onPaneContextMenu={onPaneContextMenu}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

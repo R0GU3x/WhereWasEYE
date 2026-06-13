@@ -1,79 +1,58 @@
 "use client"
 
-import { memo, useMemo } from "react"
-import {
-  BaseEdge,
-  EdgeLabelRenderer,
-  getBezierPath,
-  getSmoothStepPath,
-  useReactFlow,
-  type EdgeProps,
-} from "@xyflow/react"
-
-// Helper to check if two line segments intersect
-function lineSegmentIntersection(
-  p1: { x: number; y: number },
-  p2: { x: number; y: number },
-  p3: { x: number; y: number },
-  p4: { x: number; y: number }
-): { x: number; y: number } | null {
-  const denom = (p4.y - p3.y) * (p2.x - p1.x) - (p4.x - p3.x) * (p2.y - p1.y)
-  if (Math.abs(denom) < 0.0001) return null // parallel lines
-
-  const ua = ((p4.x - p3.x) * (p1.y - p3.y) - (p4.y - p3.y) * (p1.x - p3.x)) / denom
-  const ub = ((p2.x - p1.x) * (p1.y - p3.y) - (p2.y - p1.y) * (p1.x - p3.x)) / denom
-
-  if (ua > 0.05 && ua < 0.95 && ub > 0.05 && ub < 0.95) {
-    return {
-      x: p1.x + ua * (p2.x - p1.x),
-      y: p1.y + ua * (p2.y - p1.y),
-    }
-  }
-  return null
-}
-
-// Get points along a bezier curve
-function getBezierPoints(
-  sourceX: number,
-  sourceY: number,
-  targetX: number,
-  targetY: number,
-  segments: number = 10
-): { x: number; y: number }[] {
-  const points: { x: number; y: number }[] = []
-  const midY = (sourceY + targetY) / 2
-  
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments
-    // Approximate bezier curve points
-    const x = sourceX + (targetX - sourceX) * t
-    const y = sourceY + (midY - sourceY) * 2 * t * (1 - t) + (targetY - sourceY) * t * t
-    points.push({ x, y })
-  }
-  return points
-}
-
-// Get points along a smoothstep path
-function getSmoothStepPoints(
-  sourceX: number,
-  sourceY: number,
-  targetX: number,
-  targetY: number
-): { x: number; y: number }[] {
-  const midY = (sourceY + targetY) / 2
-  return [
-    { x: sourceX, y: sourceY },
-    { x: sourceX, y: midY },
-    { x: targetX, y: midY },
-    { x: targetX, y: targetY },
-  ]
-}
+import { useState, useCallback, useMemo, memo } from 'react'
+import { BaseEdge, EdgeLabelRenderer, useReactFlow, type EdgeProps } from '@xyflow/react'
+import { getBezierPath, getSmoothStepPath } from '@xyflow/react'
 
 interface CrossingEdgeProps extends EdgeProps {
   data?: {
     useSmoothStep?: boolean
     isHighlighted?: boolean
+    bendPoints?: Array<{ x: number; y: number }>
   }
+}
+
+// Helper function to generate orthogonal path with bend points
+function generateOrthogonalPath(
+  sourceX: number,
+  sourceY: number,
+  targetX: number,
+  targetY: number,
+  bendPoints: Array<{ x: number; y: number }>
+): string {
+  if (bendPoints.length === 0) {
+    // Default orthogonal routing with middle bend
+    const midX = sourceX + (targetX - sourceX) / 2
+    return `M ${sourceX} ${sourceY} L ${midX} ${sourceY} L ${midX} ${targetY} L ${targetX} ${targetY}`
+  }
+
+  // Build path through bend points with strict 90° angles
+  let path = `M ${sourceX} ${sourceY}`
+  let lastX = sourceX
+  let lastY = sourceY
+
+  for (let i = 0; i < bendPoints.length; i++) {
+    const bend = bendPoints[i]
+    // Alternate between horizontal and vertical movements for orthogonal routing
+    if (i % 2 === 0) {
+      // Move horizontally first, then vertically
+      path += ` L ${bend.x} ${lastY} L ${bend.x} ${bend.y}`
+    } else {
+      // Move vertically first, then horizontally
+      path += ` L ${lastX} ${bend.y} L ${bend.x} ${bend.y}`
+    }
+    lastX = bend.x
+    lastY = bend.y
+  }
+
+  // Final segment to target with orthogonal routing
+  if (bendPoints.length % 2 === 0) {
+    path += ` L ${lastX} ${targetY} L ${targetX} ${targetY}`
+  } else {
+    path += ` L ${targetX} ${lastY} L ${targetX} ${targetY}`
+  }
+
+  return path
 }
 
 function CrossingEdgeComponent({
@@ -88,25 +67,31 @@ function CrossingEdgeComponent({
   markerEnd,
   data,
 }: CrossingEdgeProps) {
-  const { getEdges, getNodes } = useReactFlow()
+  const { getEdges, getNodes, setEdges } = useReactFlow()
   const useSmoothStep = data?.useSmoothStep ?? false
   const isHighlighted = data?.isHighlighted ?? false
+  const bendPoints = data?.bendPoints ?? []
+  const [isDraggingBend, setIsDraggingBend] = useState<number | null>(null)
 
   // Apply highlight styles
   const highlightedStyle = isHighlighted ? {
     ...style,
-    stroke: "var(--primary)",
+    stroke: "oklch(0.7 0.2 180)",
     strokeWidth: 4,
     opacity: 1,
   } : style
 
   const highlightedMarkerEnd = isHighlighted ? {
     ...markerEnd,
-    color: "var(--primary)",
+    color: "oklch(0.7 0.2 180)",
   } : markerEnd
 
-  const [edgePath] = useSmoothStep
-    ? getSmoothStepPath({
+  // Generate path based on routing type
+  const edgePath = useMemo(() => {
+    if (bendPoints.length > 0) {
+      return generateOrthogonalPath(sourceX, sourceY, targetX, targetY, bendPoints)
+    } else if (useSmoothStep) {
+      const [path] = getSmoothStepPath({
         sourceX,
         sourceY,
         sourcePosition,
@@ -115,7 +100,9 @@ function CrossingEdgeComponent({
         targetPosition,
         borderRadius: 8,
       })
-    : getBezierPath({
+      return path
+    } else {
+      const [path] = getBezierPath({
         sourceX,
         sourceY,
         sourcePosition,
@@ -123,74 +110,68 @@ function CrossingEdgeComponent({
         targetY,
         targetPosition,
       })
+      return path
+    }
+  }, [bendPoints, useSmoothStep, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition])
 
-  // Find crossing points with other edges
+  // Calculate crossing points (skip if using custom routing)
   const crossingPoints = useMemo(() => {
-    const edges = getEdges()
+    const crossings: Array<{ x: number; y: number }> = []
+
+    if (bendPoints.length > 0) return crossings
+
+    const allEdges = getEdges()
+    const thisEdge = allEdges.find((e) => e.id === id)
+    if (!thisEdge) return crossings
+
     const nodes = getNodes()
-    const crossings: { x: number; y: number }[] = []
 
-    // Get node positions for edge source/target mapping
-    const nodePositions = new Map(
-      nodes.map((n) => [
-        n.id,
-        {
-          x: n.position.x + 70, // center of node (assuming ~140px width)
-          y: n.position.y + 30, // center of node (assuming ~60px height)
-        },
-      ])
-    )
+    for (const edge of allEdges) {
+      if (edge.id === id) continue
 
-    // Get points for current edge
-    const currentPoints = useSmoothStep
-      ? getSmoothStepPoints(sourceX, sourceY, targetX, targetY)
-      : getBezierPoints(sourceX, sourceY, targetX, targetY)
+      const edgeSourceNode = nodes.find((n) => n.id === edge.source)
+      const edgeTargetNode = nodes.find((n) => n.id === edge.target)
 
-    // Check against all other edges
-    edges.forEach((edge) => {
-      if (edge.id === id) return
+      if (edgeSourceNode && edgeTargetNode) {
+        const ex1 = edgeSourceNode.position?.x || 0
+        const ey1 = edgeSourceNode.position?.y || 0
+        const ex2 = edgeTargetNode.position?.x || 0
+        const ey2 = edgeTargetNode.position?.y || 0
 
-      const edgeSource = nodePositions.get(edge.source)
-      const edgeTarget = nodePositions.get(edge.target)
-      if (!edgeSource || !edgeTarget) return
+        const minX = Math.min(sourceX, targetX)
+        const maxX = Math.max(sourceX, targetX)
+        const minY = Math.min(sourceY, targetY)
+        const maxY = Math.max(sourceY, targetY)
 
-      // Adjust for handle positions (top/bottom)
-      const otherSourceY = edgeSource.y + 30 // bottom handle
-      const otherTargetY = edgeTarget.y - 30 // top handle
+        const eMinX = Math.min(ex1, ex2)
+        const eMaxX = Math.max(ex1, ex2)
+        const eMinY = Math.min(ey1, ey2)
+        const eMaxY = Math.max(ey1, ey2)
 
-      const otherPoints = useSmoothStep
-        ? getSmoothStepPoints(edgeSource.x, otherSourceY, edgeTarget.x, otherTargetY)
-        : getBezierPoints(edgeSource.x, otherSourceY, edgeTarget.x, otherTargetY)
-
-      // Check all segment pairs for intersections
-      for (let i = 0; i < currentPoints.length - 1; i++) {
-        for (let j = 0; j < otherPoints.length - 1; j++) {
-          const intersection = lineSegmentIntersection(
-            currentPoints[i],
-            currentPoints[i + 1],
-            otherPoints[j],
-            otherPoints[j + 1]
-          )
-          if (intersection) {
-            // Avoid duplicate points
-            const isDuplicate = crossings.some(
-              (c) => Math.abs(c.x - intersection.x) < 10 && Math.abs(c.y - intersection.y) < 10
-            )
-            if (!isDuplicate) {
-              crossings.push(intersection)
-            }
-          }
+        if (minX <= eMaxX && maxX >= eMinX && minY <= eMaxY && maxY >= eMinY) {
+          crossings.push({
+            x: (minX + maxX) / 2,
+            y: (minY + maxY) / 2,
+          })
         }
       }
-    })
+    }
 
     return crossings
-  }, [getEdges, getNodes, id, sourceX, sourceY, targetX, targetY, useSmoothStep])
+  }, [getEdges, getNodes, id, sourceX, sourceY, targetX, targetY, bendPoints])
+
+  // Handle bend point dragging
+  const handleBendMouseDown = useCallback((index: number, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDraggingBend(index)
+  }, [])
 
   return (
     <>
       <BaseEdge path={edgePath} markerEnd={highlightedMarkerEnd} style={highlightedStyle} />
       <EdgeLabelRenderer>
+        {/* Crossing point indicators */}
         {crossingPoints.map((point, index) => (
           <div
             key={`${id}-crossing-${index}`}
@@ -201,9 +182,25 @@ function CrossingEdgeComponent({
             }}
             className="flex items-center justify-center"
           >
-            {/* Small bridge/arc indicator */}
             <div className="h-3 w-3 rounded-full border-2 border-primary bg-background" />
           </div>
+        ))}
+        
+        {/* Draggable bend points for orthogonal routing */}
+        {bendPoints.map((point, index) => (
+          <div
+            key={`${id}-bend-${index}`}
+            onMouseDown={(e) => handleBendMouseDown(index, e)}
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${point.x}px, ${point.y}px)`,
+              cursor: "grab",
+              width: "12px",
+              height: "12px",
+            }}
+            className="flex items-center justify-center rounded-full border-2 border-accent bg-card hover:bg-accent/20 active:cursor-grabbing"
+            title={`Bend point ${index + 1} - drag to adjust routing`}
+          />
         ))}
       </EdgeLabelRenderer>
     </>

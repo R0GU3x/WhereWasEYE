@@ -140,28 +140,12 @@ export function GraphCanvas() {
     }
   }, [reactFlowInstance, nodes])
 
-  // Auto-save to localStorage
+  // Auto-save to localStorage only (no debounced history pollution)
   useEffect(() => {
     if (nodes.length > 0 || edges.length > 0) {
       localStorage.setItem("cyber-graph-data", JSON.stringify({ nodes, edges, useTidyEdges }))
     }
   }, [nodes, edges, useTidyEdges])
-
-  // Debounced history save for drag operations
-  useEffect(() => {
-    if (isDraggingRef.current) return // Skip while dragging
-
-    const timer = setTimeout(() => {
-      const state: GraphState = { nodes, edges, useTidyEdges }
-      // Only push if this is meaningfully different from the last history state
-      const lastState = history.getCurrentState()
-      if (!lastState || JSON.stringify(lastState.state) !== JSON.stringify(state)) {
-        history.push(state, "Graph updated")
-      }
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [nodes, edges, useTidyEdges, history])
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -170,10 +154,16 @@ export function GraphCanvas() {
         type: useTidyEdges ? "smoothstep" : "crossing",
         data: { useSmoothStep: useTidyEdges },
       }
-      setEdges((eds) => addEdge(newEdge, eds))
+      setEdges((eds) => {
+        const updatedEdges = addEdge(newEdge, eds)
+        // Save to history only after edge is created
+        const state: GraphState = { nodes, edges: updatedEdges, useTidyEdges }
+        history.push(state, "Edge connected")
+        return updatedEdges
+      })
       playSound("edgeConnect")
     },
-    [setEdges, useTidyEdges, playSound]
+    [setEdges, useTidyEdges, playSound, nodes, edges, useTidyEdges, history]
   )
 
   // Wrap onNodesChange to track dragging
@@ -251,7 +241,13 @@ export function GraphCanvas() {
       }
 
       const newNode = createNode(position)
-      setNodes((nds) => [...nds, newNode])
+      setNodes((nds) => {
+        const updatedNodes = [...nds, newNode]
+        // Save to history after node creation
+        const state: GraphState = { nodes: updatedNodes, edges, useTidyEdges }
+        history.push(state, "Node created")
+        return updatedNodes
+      })
       playSound("nodeCreate")
 
       if (parentId) {
@@ -294,47 +290,65 @@ export function GraphCanvas() {
 
   const handleConfirmDeleteNode = useCallback(() => {
     if (!deleteConfirmNodeId) return
-    setNodes((nds) => nds.filter((node) => node.id !== deleteConfirmNodeId))
-    setEdges((eds) =>
-      eds.filter((edge) => edge.source !== deleteConfirmNodeId && edge.target !== deleteConfirmNodeId)
-    )
+    setNodes((nds) => {
+      const updatedNodes = nds.filter((node) => node.id !== deleteConfirmNodeId)
+      setEdges((eds) => {
+        const updatedEdges = eds.filter((edge) => edge.source !== deleteConfirmNodeId && edge.target !== deleteConfirmNodeId)
+        // Save to history after node deletion
+        const state: GraphState = { nodes: updatedNodes, edges: updatedEdges, useTidyEdges }
+        history.push(state, "Node deleted")
+        return updatedEdges
+      })
+      return updatedNodes
+    })
     if (selectedNode?.id === deleteConfirmNodeId) {
       setSelectedNode(null)
     }
     setDeleteConfirmNodeId(null)
     playSound("nodeDelete")
-  }, [setNodes, setEdges, selectedNode, deleteConfirmNodeId, playSound])
+  }, [setNodes, setEdges, selectedNode, deleteConfirmNodeId, playSound, history, useTidyEdges])
 
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
-      setNodes((nds) => nds.filter((node) => node.id !== nodeId))
-      setEdges((eds) =>
-        eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId)
-      )
+      setNodes((nds) => {
+        const updatedNodes = nds.filter((node) => node.id !== nodeId)
+        setEdges((eds) => {
+          const updatedEdges = eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId)
+          // Save to history after node deletion
+          const state: GraphState = { nodes: updatedNodes, edges: updatedEdges, useTidyEdges }
+          history.push(state, "Node deleted")
+          return updatedEdges
+        })
+        return updatedNodes
+      })
       if (selectedNode?.id === nodeId) {
         setSelectedNode(null)
       }
       playSound("nodeDelete")
     },
-    [setNodes, setEdges, selectedNode, playSound]
+    [setNodes, setEdges, selectedNode, playSound, history, useTidyEdges]
   )
 
   const handleUpdateNode = useCallback(
     (nodeId: string, data: Partial<CyberNodeData>) => {
-      setNodes((nds) =>
-        nds.map((node) =>
+      setNodes((nds) => {
+        const updatedNodes = nds.map((node) =>
           node.id === nodeId
             ? { ...node, data: { ...node.data, ...data } }
             : node
         )
-      )
+        // Save to history after node update
+        const state: GraphState = { nodes: updatedNodes, edges, useTidyEdges }
+        history.push(state, "Node updated")
+        return updatedNodes
+      })
       if (selectedNode?.id === nodeId) {
         setSelectedNode((prev) =>
           prev ? { ...prev, data: { ...prev.data, ...data } } : null
         )
       }
     },
-    [setNodes, selectedNode]
+    [setNodes, selectedNode, history, edges, useTidyEdges]
   )
 
   const handleDeleteEdge = useCallback(
@@ -819,6 +833,10 @@ export function GraphCanvas() {
             setUseTidyEdges(data.useTidyEdges)
           }
 
+          // Save to history after import
+          const state: GraphState = { nodes: updatedNodes, edges: updatedEdges, useTidyEdges: tidyMode }
+          history.push(state, "Graph imported from JSON")
+
           playSound("edgeConnect")
         } else {
           console.error("Invalid JSON structure: missing nodes or edges")
@@ -929,7 +947,7 @@ export function GraphCanvas() {
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡄⠀⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡸⣞⡇⠀⠀⠀⣼⡿⠀⠀⠀⠀⠉⠉⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣧⢿⣽⡀⠀⠉⠛⠁⠀⣰⣾⠿⠿⣦⡀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣞⡿⣞⡅⠀⠀⠀⠀⠘⠏⠓⠒⠒⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀��⠀⠀⠀⠀⣼⣞⡿⣞⡅⠀⠀⠀⠀⠘⠏⠓⠒⠒⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣟⢾⣽⢫⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⢤⣶⡻⣞⣿⣺⢯⣽⣳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⢠⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣤⣿⣽⣻⢾⣽⣷⣾⣽⣻⣞⣷⣳⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀

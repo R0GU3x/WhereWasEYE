@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useState, useRef, useEffect } from "react"
-import { CircleHelp, X, ChevronDown, ChevronUp, Workflow, Camera, Volume2, VolumeX } from "lucide-react"
+import { CircleHelp, X, ChevronDown, ChevronUp, Workflow, Camera, Volume2, VolumeX, RotateCcw, RotateCw } from "lucide-react"
 import {
   ReactFlow,
   Background,
@@ -25,6 +25,7 @@ import { DetailPanel } from "./detail-panel"
 import { CrossingEdge } from "./crossing-edge"
 import { SnapshotModal } from "./snapshot-modal"
 import { useSound } from "@/hooks/use-sound"
+import { useHistory, type GraphState } from "@/hooks/use-history"
 
 const APP_VERSION = "v4.7.2"
 
@@ -73,6 +74,10 @@ export function GraphCanvas() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
   const { soundEnabled, toggleSound, playSound } = useSound()
+  const history = useHistory(50)
+  const isDraggingRef = useRef(false)
+  const [isDragOverCanvas, setIsDragOverCanvas] = useState(false)
+  const hasAutoFitRef = useRef(false)
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -124,12 +129,39 @@ export function GraphCanvas() {
     }
   }, [reactFlowInstance])
 
+  // Auto-fit graph on initial load if there are nodes
+  useEffect(() => {
+    if (reactFlowInstance && nodes.length > 0 && !hasAutoFitRef.current) {
+      hasAutoFitRef.current = true
+      // Use fitView to center all nodes
+      setTimeout(() => {
+        reactFlowInstance.fitView({ padding: 0.1 })
+      }, 100)
+    }
+  }, [reactFlowInstance, nodes])
+
   // Auto-save to localStorage
   useEffect(() => {
     if (nodes.length > 0 || edges.length > 0) {
       localStorage.setItem("cyber-graph-data", JSON.stringify({ nodes, edges, useTidyEdges }))
     }
   }, [nodes, edges, useTidyEdges])
+
+  // Debounced history save for drag operations
+  useEffect(() => {
+    if (isDraggingRef.current) return // Skip while dragging
+
+    const timer = setTimeout(() => {
+      const state: GraphState = { nodes, edges, useTidyEdges }
+      // Only push if this is meaningfully different from the last history state
+      const lastState = history.getCurrentState()
+      if (!lastState || JSON.stringify(lastState.state) !== JSON.stringify(state)) {
+        history.push(state, "Graph updated")
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [nodes, edges, useTidyEdges, history])
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -142,6 +174,24 @@ export function GraphCanvas() {
       playSound("edgeConnect")
     },
     [setEdges, useTidyEdges, playSound]
+  )
+
+  // Wrap onNodesChange to track dragging
+  const handleNodesChange = useCallback(
+    (changes: any) => {
+      const hasDragChange = changes.some((change: any) => change.dragging === true)
+      const hasDragEnd = changes.some((change: any) => change.dragging === false)
+
+      if (hasDragChange) {
+        isDraggingRef.current = true
+      }
+      if (hasDragEnd) {
+        isDraggingRef.current = false
+      }
+
+      onNodesChange(changes)
+    },
+    [onNodesChange]
   )
 
   const createNode = useCallback(
@@ -552,11 +602,44 @@ export function GraphCanvas() {
     }
   }, [reactFlowInstance])
 
+  // Undo/Redo handlers
+  const handleUndo = useCallback(() => {
+    const previousState = history.undo()
+    if (previousState) {
+      setNodes(previousState.nodes)
+      setEdges(previousState.edges)
+      setUseTidyEdges(previousState.useTidyEdges)
+      playSound("edgeConnect")
+    }
+  }, [history, setNodes, setEdges, playSound])
+
+  const handleRedo = useCallback(() => {
+    const nextState = history.redo()
+    if (nextState) {
+      setNodes(nextState.nodes)
+      setEdges(nextState.edges)
+      setUseTidyEdges(nextState.useTidyEdges)
+      playSound("edgeConnect")
+    }
+  }, [history, setNodes, setEdges, playSound])
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+
+      // Undo: Ctrl+Z or Cmd+Z
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !isInput) {
+        e.preventDefault()
+        handleUndo()
+      }
+
+      // Redo: Ctrl+Shift+Z or Cmd+Shift+Z
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey && !isInput) {
+        e.preventDefault()
+        handleRedo()
+      }
 
       // Track shift key
       if (e.key === "Shift") {
@@ -608,7 +691,7 @@ export function GraphCanvas() {
       document.removeEventListener("keydown", handleKeyDown)
       document.removeEventListener("keyup", handleKeyUp)
     }
-  }, [selectedNode, selectedNodes, requestDeleteNode, snapshotModal, bulkDeleteModal, deleteConfirmNodeId, clearCanvasModal, showHelp])
+  }, [selectedNode, selectedNodes, requestDeleteNode, snapshotModal, bulkDeleteModal, deleteConfirmNodeId, clearCanvasModal, showHelp, handleUndo, handleRedo])
 
   // Export function
   const handleExport = useCallback(() => {
@@ -673,7 +756,80 @@ export function GraphCanvas() {
     input.click()
   }, [setNodes, setEdges])
 
-  // Bulk status update
+  // Drag and drop handlers for JSON import
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOverCanvas(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    // Only hide drop zone if dragging completely away from the wrapper
+    if (e.currentTarget === e.target) {
+      setIsDragOverCanvas(false)
+    }
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOverCanvas(false)
+
+    const files = e.dataTransfer.files
+    if (!files || files.length === 0) return
+
+    const file = Array.from(files).find((f) => f.type === "application/json" || f.name.endsWith(".json"))
+    if (!file) {
+      console.error("No JSON file found in dropped files")
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string)
+        if (data.nodes && data.edges) {
+          const updatedNodes = data.nodes.map((node: Node<CyberNodeData>) => ({
+            ...node,
+            data: {
+              ...node.data,
+              status: node.data.status === "not-yet" ? "default" :
+                node.data.status === "running" ? "in-progress" :
+                  node.data.status === "queued" ? "pending" :
+                    node.data.status === "pwned" ? "success" :
+                      node.data.status === "false-positive" ? "failed" :
+                        node.data.status === "exploitable" ? "failed" :
+                          node.data.status === "needs-review" ? "pending" :
+                            node.data.status || "default"
+            }
+          }))
+          setNodes(updatedNodes)
+
+          const tidyMode = data.useTidyEdges ?? false
+          const updatedEdges = data.edges.map((edge: Edge) => ({
+            ...edge,
+            type: tidyMode ? "smoothstep" : "crossing",
+            data: { ...edge.data, useSmoothStep: tidyMode },
+          }))
+          setEdges(updatedEdges)
+
+          if (data.useTidyEdges !== undefined) {
+            setUseTidyEdges(data.useTidyEdges)
+          }
+
+          playSound("edgeConnect")
+        } else {
+          console.error("Invalid JSON structure: missing nodes or edges")
+        }
+      } catch (err) {
+        console.error("Failed to parse dropped JSON file:", err)
+      }
+    }
+    reader.readAsText(file)
+  }, [setNodes, setEdges, playSound])
+
   const handleBulkStatusUpdate = useCallback(
     (status: NodeStatus) => {
       const updatedNodes = nodes.map((node) =>
@@ -719,6 +875,10 @@ export function GraphCanvas() {
   // Check if canvas is empty
   const isCanvasEmpty = nodes.length === 0
 
+  // Get outgoing edges for selected node
+  const highlightedEdgeIds = selectedNode
+    ? new Set(edges.filter((e) => e.source === selectedNode.id).map((e) => e.id))
+    : new Set<string>()
   return (
     <div
       ref={reactFlowWrapper}
@@ -727,8 +887,21 @@ export function GraphCanvas() {
       onMouseMove={handlePaneMouseMove}
       onMouseUp={handlePaneMouseUp}
       onWheel={handleWheel}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       style={{ cursor: isShiftHeld ? 'crosshair' : 'grab' }}
     >
+      {/* Drag and drop zone overlay */}
+      {isDragOverCanvas && (
+        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-lg border-4 border-dashed border-primary bg-primary/5 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3">
+            <p className="font-mono text-lg font-semibold text-primary">Drop JSON file to import</p>
+            <p className="font-mono text-sm text-muted-foreground">or drag to continue</p>
+          </div>
+        </div>
+      )}
+
       {/* Selection box */}
       {selectBox && (
         <div
@@ -800,8 +973,14 @@ export function GraphCanvas() {
           ...node,
           selected: selectedNodes.has(node.id) || node.selected,
         }))}
-        edges={edges}
-        onNodesChange={onNodesChange}
+        edges={edges.map((edge) => ({
+          ...edge,
+          data: {
+            ...edge.data,
+            isHighlighted: highlightedEdgeIds.has(edge.id),
+          }
+        }))}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onInit={setReactFlowInstance}
@@ -898,6 +1077,14 @@ export function GraphCanvas() {
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
               <span><strong>Ctrl + Scroll:</strong> zoom in/out at cursor</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span><strong>Ctrl+Z:</strong> undo last action</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span><strong>Ctrl+Shift+Z:</strong> redo last action</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
@@ -1070,6 +1257,30 @@ export function GraphCanvas() {
 
       {/* Import/Export/Tidy buttons */}
       <div className="absolute right-4 bottom-4 z-10 flex gap-2">
+        <button
+          onClick={handleUndo}
+          disabled={!history.canUndo}
+          className={`flex items-center justify-center rounded border p-1.5 backdrop-blur-sm transition-colors ${
+            history.canUndo
+              ? "border-border bg-card/80 text-muted-foreground hover:bg-muted hover:text-foreground"
+              : "border-border/50 bg-card/50 text-muted-foreground/50 cursor-not-allowed"
+          }`}
+          title="Undo (Ctrl+Z)"
+        >
+          <RotateCcw size={14} />
+        </button>
+        <button
+          onClick={handleRedo}
+          disabled={!history.canRedo}
+          className={`flex items-center justify-center rounded border p-1.5 backdrop-blur-sm transition-colors ${
+            history.canRedo
+              ? "border-border bg-card/80 text-muted-foreground hover:bg-muted hover:text-foreground"
+              : "border-border/50 bg-card/50 text-muted-foreground/50 cursor-not-allowed"
+          }`}
+          title="Redo (Ctrl+Shift+Z)"
+        >
+          <RotateCw size={14} />
+        </button>
         <button
           onClick={toggleSound}
           className={`flex items-center justify-center rounded border p-1.5 backdrop-blur-sm transition-colors ${soundEnabled

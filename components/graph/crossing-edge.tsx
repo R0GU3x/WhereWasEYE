@@ -72,6 +72,7 @@ function getSmoothStepPoints(
 interface CrossingEdgeProps extends EdgeProps {
   data?: {
     useSmoothStep?: boolean
+    isHighlighted?: boolean
   }
 }
 
@@ -89,6 +90,20 @@ function CrossingEdgeComponent({
 }: CrossingEdgeProps) {
   const { getEdges, getNodes } = useReactFlow()
   const useSmoothStep = data?.useSmoothStep ?? false
+  const isHighlighted = data?.isHighlighted ?? false
+
+  // Apply highlight styles
+  const highlightedStyle = isHighlighted ? {
+    ...style,
+    stroke: "var(--primary)",
+    strokeWidth: 4,
+    opacity: 1,
+  } : style
+
+  const highlightedMarkerEnd = isHighlighted ? {
+    ...markerEnd,
+    color: "var(--primary)",
+  } : markerEnd
 
   const [edgePath] = useSmoothStep
     ? getSmoothStepPath({
@@ -174,7 +189,7 @@ function CrossingEdgeComponent({
 
   return (
     <>
-      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
+      <BaseEdge path={edgePath} markerEnd={highlightedMarkerEnd} style={highlightedStyle} />
       <EdgeLabelRenderer>
         {crossingPoints.map((point, index) => (
           <div

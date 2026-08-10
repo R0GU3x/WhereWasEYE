@@ -49,12 +49,30 @@ function CyberNodeComponent({ data, selected }: NodeProps) {
         selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
       )}
     >
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="!h-3 !w-3 !border-2 !border-primary !bg-background"
-      />
-      
+      {(
+        [
+          ["top", Position.Top],
+          ["right", Position.Right],
+          ["bottom", Position.Bottom],
+          ["left", Position.Left],
+        ] as const
+      ).map(([position, handlePosition]) => (
+        <div key={position} className="contents">
+          <Handle
+            id={`${position}-target`}
+            type="target"
+            position={handlePosition}
+            className="!h-3 !w-3 !border-2 !border-primary !bg-background"
+          />
+          <Handle
+            id={`${position}-source`}
+            type="source"
+            position={handlePosition}
+            className="!h-3 !w-3 !border-2 !border-primary !bg-background"
+          />
+        </div>
+      ))}
+
       <div className="flex items-center gap-2">
         <div
           className={cn(
@@ -72,12 +90,6 @@ function CyberNodeComponent({ data, selected }: NodeProps) {
           {nodeData.entityType}
         </div>
       )}
-      
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!h-3 !w-3 !border-2 !border-primary !bg-background"
-      />
     </div>
   )
 }

@@ -26,7 +26,7 @@ import { CrossingEdge } from "./crossing-edge"
 import { SnapshotModal } from "./snapshot-modal"
 import { useSound } from "@/hooks/use-sound"
 
-const APP_VERSION = "v4.7.2"
+const APP_VERSION = "v4.7.3"
 
 const nodeTypes = {
   cyber: CyberNode,
@@ -72,6 +72,7 @@ export function GraphCanvas() {
   const [snapshotModal, setSnapshotModal] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
+  const connectionStartNodeId = useRef<string | null>(null)
   const { soundEnabled, toggleSound, playSound } = useSound()
 
   // Load from localStorage on mount
@@ -131,14 +132,28 @@ export function GraphCanvas() {
     }
   }, [nodes, edges, useTidyEdges])
 
+  const onConnectStart = useCallback((_: unknown, params: { nodeId: string | null }) => {
+    connectionStartNodeId.current = params.nodeId
+  }, [])
+
+  const onConnectEnd = useCallback(() => {
+    connectionStartNodeId.current = null
+  }, [])
+
   const onConnect = useCallback(
     (connection: Connection) => {
+      const startNodeId = connectionStartNodeId.current
+      const normalizedConnection =
+        startNodeId && connection.target === startNodeId
+          ? { ...connection, source: connection.target, target: connection.source }
+          : connection
       const newEdge = {
-        ...connection,
+        ...normalizedConnection,
         type: useTidyEdges ? "smoothstep" : "crossing",
         data: { useSmoothStep: useTidyEdges },
       }
       setEdges((eds) => addEdge(newEdge, eds))
+      connectionStartNodeId.current = null
       playSound("edgeConnect")
     },
     [setEdges, useTidyEdges, playSound]
@@ -761,7 +776,7 @@ export function GraphCanvas() {
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⢤⣶⡻⣞⣿⣺⢯⣽⣳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⢠⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣤⣿⣽⣻⢾⣽⣷⣾⣽⣻⣞⣷⣳⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣶⣄⡀⠀⠀⠀⣀⣲⣴⢶⣞⡿⣽⣞⡷⣯⢿⡽⣞⣿⠟⠋⠁⠉⠈⠳⣟⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⢶⣾⣿⡽⣯⣟⡾⣽⡷⣯⣟⡽⡾⣽⡯⠁⠀⠀⠀⠀⠀⠀⢮⣭⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀���⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⢶⣾⣿⡽⣯⣟⡾⣽⡷⣯⣟⡽⡾⣽⡯⠁⠀⠀⠀⠀⠀⠀⢮⣭⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⢞⣿⣿⢯⡿⣿⣯⣟⣷⣯⢿⣳⣟⡷⣽⣼⣻⣽⠀⠀⠀⠀⠀⠀⠀⢀⣼⡯⡗⠋⠤⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⣿⣿⣯⣽⣾⣿⣾⣗⡿⣯⡷⣯⣟⡷⣞⣼⣿⣀⠀⠀⠀⠀⢀⣠⡿⣏⡗⠈⠐⠈⠅⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⠛⠏⠉⠉⠽⢟⢿⣿⣿⣿⣿⣷⣻⢾⡽⣞⡷⠄⡹⣶⢿⣻⢿⣻⡽⢯⣼⢦⠶⠁⠈⠀⠀⠀⠀⠀⠀⠀
@@ -803,6 +818,8 @@ export function GraphCanvas() {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
         onConnect={onConnect}
         onInit={setReactFlowInstance}
         onNodeContextMenu={onNodeContextMenu}

@@ -26,6 +26,7 @@ import { CrossingEdge } from "./crossing-edge"
 import { SnapshotModal } from "./snapshot-modal"
 import { useSound } from "@/hooks/use-sound"
 import { toast } from "@/components/ui/use-toast"
+import { cn } from "@/lib/utils"
 
 const APP_VERSION = "v4.7.3"
 
@@ -71,6 +72,8 @@ export function GraphCanvas() {
   const [clearCanvasModal, setClearCanvasModal] = useState(false)
   const [useTidyEdges, setUseTidyEdges] = useState(false)
   const [snapshotModal, setSnapshotModal] = useState(false)
+  const [fileDragState, setFileDragState] = useState<"idle" | "valid" | "invalid">("idle")
+  const fileDragDepth = useRef(0)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
   const connectionStartNodeId = useRef<string | null>(null)
@@ -699,19 +702,40 @@ export function GraphCanvas() {
     input.click()
   }, [importJsonFile])
 
+  const resetFileDrag = useCallback(() => {
+    fileDragDepth.current = 0
+    setFileDragState("idle")
+  }, [])
+
+  const handleCanvasDragEnter = useCallback((event: React.DragEvent) => {
+    const fileItems = Array.from(event.dataTransfer.items).filter((item) => item.kind === "file")
+    if (fileItems.length === 0) return
+    event.preventDefault()
+    fileDragDepth.current += 1
+    setFileDragState(fileItems.every((item) => item.type === "application/json" || item.type === "") ? "valid" : "invalid")
+  }, [])
+
   const handleCanvasDragOver = useCallback((event: React.DragEvent) => {
-    if (Array.from(event.dataTransfer.items).some((item) => item.kind === "file")) {
-      event.preventDefault()
-      event.dataTransfer.dropEffect = "copy"
-    }
+    const fileItems = Array.from(event.dataTransfer.items).filter((item) => item.kind === "file")
+    if (fileItems.length === 0) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "copy"
+    setFileDragState(fileItems.every((item) => item.type === "application/json" || item.type === "") ? "valid" : "invalid")
+  }, [])
+
+  const handleCanvasDragLeave = useCallback((event: React.DragEvent) => {
+    if (!Array.from(event.dataTransfer.items).some((item) => item.kind === "file")) return
+    fileDragDepth.current = Math.max(0, fileDragDepth.current - 1)
+    if (fileDragDepth.current === 0) setFileDragState("idle")
   }, [])
 
   const handleCanvasDrop = useCallback((event: React.DragEvent) => {
     if (!Array.from(event.dataTransfer.items).some((item) => item.kind === "file")) return
     event.preventDefault()
     const file = event.dataTransfer.files[0]
+    resetFileDrag()
     if (file) importJsonFile(file)
-  }, [importJsonFile])
+  }, [importJsonFile, resetFileDrag])
 
   // Bulk status update
   const handleBulkStatusUpdate = useCallback(
@@ -767,10 +791,30 @@ export function GraphCanvas() {
       onMouseMove={handlePaneMouseMove}
       onMouseUp={handlePaneMouseUp}
       onWheel={handleWheel}
+      onDragEnter={handleCanvasDragEnter}
       onDragOver={handleCanvasDragOver}
+      onDragLeave={handleCanvasDragLeave}
       onDrop={handleCanvasDrop}
       style={{ cursor: isShiftHeld ? 'crosshair' : 'grab' }}
     >
+      {fileDragState !== "idle" && (
+        <div className="pointer-events-none absolute inset-4 z-[60] flex items-center justify-center rounded-xl border-2 border-dashed bg-background/70 backdrop-blur-sm">
+          <div className={cn(
+            "rounded-lg border px-6 py-4 text-center shadow-lg",
+            fileDragState === "valid"
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-destructive bg-destructive/10 text-destructive"
+          )}>
+            <p className="font-mono text-sm font-semibold">
+              {fileDragState === "valid" ? "Drop JSON to import" : "Unsupported file type"}
+            </p>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
+              {fileDragState === "valid" ? "Release anywhere on the canvas" : "Only .json graph files can be imported"}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Selection box */}
       {selectBox && (
         <div

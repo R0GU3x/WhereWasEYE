@@ -12,6 +12,7 @@ import {
   type Connection,
   type Edge,
   type Node,
+  type XYPosition,
   type NodeMouseHandler,
   BackgroundVariant,
   MarkerType,
@@ -25,8 +26,10 @@ import { DetailPanel } from "./detail-panel"
 import { CrossingEdge } from "./crossing-edge"
 import { SnapshotModal } from "./snapshot-modal"
 import { useSound } from "@/hooks/use-sound"
+import { toast } from "@/components/ui/use-toast"
+import { cn } from "@/lib/utils"
 
-const APP_VERSION = "v4.7.2"
+const APP_VERSION = "v4.7.3"
 
 const nodeTypes = {
   cyber: CyberNode,
@@ -70,8 +73,18 @@ export function GraphCanvas() {
   const [clearCanvasModal, setClearCanvasModal] = useState(false)
   const [useTidyEdges, setUseTidyEdges] = useState(false)
   const [snapshotModal, setSnapshotModal] = useState(false)
+  const [fileDragState, setFileDragState] = useState<"idle" | "valid" | "invalid">("idle")
+  const fileDragDepth = useRef(0)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
+  const connectionStartNodeId = useRef<string | null>(null)
+  const nodeDragSession = useRef<{
+    nodeIds: string[]
+    startPositions: Record<string, XYPosition>
+    startPointer: XYPosition
+    axis: "x" | "y" | null
+    shiftState: boolean
+  } | null>(null)
   const { soundEnabled, toggleSound, playSound } = useSound()
 
   // Load from localStorage on mount
@@ -86,13 +99,13 @@ export function GraphCanvas() {
           ...node,
           data: {
             ...node.data,
-            status: node.data.status === "not-yet" ? "default" :
-              node.data.status === "running" ? "in-progress" :
-                node.data.status === "queued" ? "pending" :
-                  node.data.status === "pwned" ? "success" :
-                    node.data.status === "false-positive" ? "failed" :
-                      node.data.status === "exploitable" ? "failed" :
-                        node.data.status === "needs-review" ? "pending" :
+            status: String(node.data.status) === "not-yet" ? "default" :
+              String(node.data.status) === "running" ? "in-progress" :
+                String(node.data.status) === "queued" ? "pending" :
+                  String(node.data.status) === "pwned" ? "success" :
+                    String(node.data.status) === "false-positive" ? "failed" :
+                      String(node.data.status) === "exploitable" ? "failed" :
+                        String(node.data.status) === "needs-review" ? "pending" :
                           node.data.status || "default"
           }
         }))
@@ -116,13 +129,16 @@ export function GraphCanvas() {
     }
   }, [setNodes, setEdges])
 
-  // Adjust initial zoom level after ReactFlow initializes
+  // Fit restored graph content after ReactFlow initializes or nodes are restored.
   useEffect(() => {
-    if (reactFlowInstance) {
-      const zoomOutFactor = 1.10
-      reactFlowInstance.setCenter(0, 0, { zoom: zoomOutFactor, duration: 0 })
-    }
-  }, [reactFlowInstance])
+    if (!reactFlowInstance || nodes.length === 0) return
+
+    const frame = requestAnimationFrame(() => {
+      reactFlowInstance.fitView({ padding: 0.2, duration: 0, includeHiddenNodes: true })
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [reactFlowInstance, nodes.length])
 
   // Auto-save to localStorage
   useEffect(() => {
@@ -131,14 +147,28 @@ export function GraphCanvas() {
     }
   }, [nodes, edges, useTidyEdges])
 
+  const onConnectStart = useCallback((_: unknown, params: { nodeId: string | null }) => {
+    connectionStartNodeId.current = params.nodeId
+  }, [])
+
+  const onConnectEnd = useCallback(() => {
+    connectionStartNodeId.current = null
+  }, [])
+
   const onConnect = useCallback(
     (connection: Connection) => {
+      const startNodeId = connectionStartNodeId.current
+      const normalizedConnection =
+        startNodeId && connection.target === startNodeId
+          ? { ...connection, source: connection.target, target: connection.source }
+          : connection
       const newEdge = {
-        ...connection,
+        ...normalizedConnection,
         type: useTidyEdges ? "smoothstep" : "crossing",
         data: { useSmoothStep: useTidyEdges },
       }
       setEdges((eds) => addEdge(newEdge, eds))
+      connectionStartNodeId.current = null
       playSound("edgeConnect")
     },
     [setEdges, useTidyEdges, playSound]
@@ -390,6 +420,60 @@ export function GraphCanvas() {
     []
   )
 
+  const onNodeDragStart = useCallback((event: React.MouseEvent, node: Node<CyberNodeData>) => {
+    const nodeIds = selectedNodes.has(node.id)
+      ? Array.from(selectedNodes)
+      : [node.id]
+    const startPositions = Object.fromEntries(
+      nodes.filter((item) => nodeIds.includes(item.id)).map((item) => [item.id, { ...item.position }])
+    )
+
+    nodeDragSession.current = {
+      nodeIds,
+      startPositions,
+      startPointer: { ...node.position },
+      axis: null,
+      shiftState: event.shiftKey,
+    }
+  }, [nodes, selectedNodes])
+
+  const onNodeDrag = useCallback((event: React.MouseEvent, node: Node<CyberNodeData>) => {
+    const session = nodeDragSession.current
+    if (!session) return
+
+    if (event.shiftKey !== session.shiftState) {
+      session.startPositions = Object.fromEntries(
+        nodes.filter((item) => session.nodeIds.includes(item.id)).map((item) => [item.id, { ...item.position }])
+      )
+      session.startPointer = { ...node.position }
+      session.axis = null
+      session.shiftState = event.shiftKey
+    }
+
+    if (!event.shiftKey) return
+
+    const deltaX = node.position.x - session.startPointer.x
+    const deltaY = node.position.y - session.startPointer.y
+    if (!session.axis && (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2)) {
+      session.axis = Math.abs(deltaX) >= Math.abs(deltaY) ? "x" : "y"
+    }
+    if (!session.axis) return
+
+    const constrainedDelta = session.axis === "x" ? { x: deltaX, y: 0 } : { x: 0, y: deltaY }
+    setNodes((currentNodes) => currentNodes.map((item) => {
+      const start = session.startPositions[item.id]
+      if (!start) return item
+      return {
+        ...item,
+        position: { x: start.x + constrainedDelta.x, y: start.y + constrainedDelta.y },
+      }
+    }))
+  }, [nodes, setNodes])
+
+  const onNodeDragStop = useCallback(() => {
+    nodeDragSession.current = null
+  }, [])
+
   const onPaneClick = useCallback(() => {
     if (!isDrawingSelectBox) {
       setSelectedNode(null)
@@ -622,56 +706,98 @@ export function GraphCanvas() {
     URL.revokeObjectURL(url)
   }, [nodes, edges, useTidyEdges])
 
+  const importJsonFile = useCallback((file: File) => {
+    if (!file.name.toLowerCase().endsWith(".json") && file.type !== "application/json") {
+      toast({ title: "Unsupported file", description: "Please drop a JSON file.", variant: "destructive" })
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string)
+        if (!Array.isArray(data?.nodes) || !Array.isArray(data?.edges)) {
+          throw new Error("Invalid graph structure")
+        }
+
+        const updatedNodes = data.nodes.map((node: Node<CyberNodeData>) => ({
+          ...node,
+          data: {
+            ...node.data,
+            status: String(node.data.status) === "not-yet" ? "default" :
+              String(node.data.status) === "running" ? "in-progress" :
+                String(node.data.status) === "queued" ? "pending" :
+                  String(node.data.status) === "pwned" ? "success" :
+                    String(node.data.status) === "false-positive" ? "failed" :
+                      String(node.data.status) === "exploitable" ? "failed" :
+                        String(node.data.status) === "needs-review" ? "pending" :
+                          node.data.status || "default"
+          }
+        }))
+        setNodes(updatedNodes)
+
+        const tidyMode = data.useTidyEdges ?? false
+        setEdges(data.edges.map((edge: Edge) => ({
+          ...edge,
+          type: tidyMode ? "smoothstep" : "crossing",
+          data: { ...edge.data, useSmoothStep: tidyMode },
+        })))
+        if (data.useTidyEdges !== undefined) setUseTidyEdges(data.useTidyEdges)
+        toast({ title: "Graph imported", description: `${updatedNodes.length} nodes loaded.` })
+      } catch {
+        toast({ title: "Import failed", description: "The file is not a valid graph JSON file.", variant: "destructive" })
+      }
+    }
+    reader.onerror = () => toast({ title: "Import failed", description: "The file could not be read.", variant: "destructive" })
+    reader.readAsText(file)
+  }, [setNodes, setEdges])
+
   // Import function
   const handleImport = useCallback(() => {
     const input = document.createElement("input")
     input.type = "file"
-    input.accept = ".json"
+    input.accept = ".json,application/json"
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0]
-      if (file) {
-        const reader = new FileReader()
-        reader.onload = (event) => {
-          try {
-            const data = JSON.parse(event.target?.result as string)
-            if (data.nodes && data.edges) {
-              const updatedNodes = data.nodes.map((node: Node<CyberNodeData>) => ({
-                ...node,
-                data: {
-                  ...node.data,
-                  status: node.data.status === "not-yet" ? "default" :
-                    node.data.status === "running" ? "in-progress" :
-                      node.data.status === "queued" ? "pending" :
-                        node.data.status === "pwned" ? "success" :
-                          node.data.status === "false-positive" ? "failed" :
-                            node.data.status === "exploitable" ? "failed" :
-                              node.data.status === "needs-review" ? "pending" :
-                                node.data.status || "default"
-                }
-              }))
-              setNodes(updatedNodes)
-
-              const tidyMode = data.useTidyEdges ?? false
-              const updatedEdges = data.edges.map((edge: Edge) => ({
-                ...edge,
-                type: tidyMode ? "smoothstep" : "crossing",
-                data: { ...edge.data, useSmoothStep: tidyMode },
-              }))
-              setEdges(updatedEdges)
-
-              if (data.useTidyEdges !== undefined) {
-                setUseTidyEdges(data.useTidyEdges)
-              }
-            }
-          } catch {
-            console.error("Invalid JSON file")
-          }
-        }
-        reader.readAsText(file)
-      }
+      if (file) importJsonFile(file)
     }
     input.click()
-  }, [setNodes, setEdges])
+  }, [importJsonFile])
+
+  const resetFileDrag = useCallback(() => {
+    fileDragDepth.current = 0
+    setFileDragState("idle")
+  }, [])
+
+  const handleCanvasDragEnter = useCallback((event: React.DragEvent) => {
+    const fileItems = Array.from(event.dataTransfer.items).filter((item) => item.kind === "file")
+    if (fileItems.length === 0) return
+    event.preventDefault()
+    fileDragDepth.current += 1
+    setFileDragState(fileItems.every((item) => item.type === "application/json" || item.type === "") ? "valid" : "invalid")
+  }, [])
+
+  const handleCanvasDragOver = useCallback((event: React.DragEvent) => {
+    const fileItems = Array.from(event.dataTransfer.items).filter((item) => item.kind === "file")
+    if (fileItems.length === 0) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "copy"
+    setFileDragState(fileItems.every((item) => item.type === "application/json" || item.type === "") ? "valid" : "invalid")
+  }, [])
+
+  const handleCanvasDragLeave = useCallback((event: React.DragEvent) => {
+    if (!Array.from(event.dataTransfer.items).some((item) => item.kind === "file")) return
+    fileDragDepth.current = Math.max(0, fileDragDepth.current - 1)
+    if (fileDragDepth.current === 0) setFileDragState("idle")
+  }, [])
+
+  const handleCanvasDrop = useCallback((event: React.DragEvent) => {
+    if (!Array.from(event.dataTransfer.items).some((item) => item.kind === "file")) return
+    event.preventDefault()
+    const file = event.dataTransfer.files[0]
+    resetFileDrag()
+    if (file) importJsonFile(file)
+  }, [importJsonFile, resetFileDrag])
 
   // Bulk status update
   const handleBulkStatusUpdate = useCallback(
@@ -727,8 +853,30 @@ export function GraphCanvas() {
       onMouseMove={handlePaneMouseMove}
       onMouseUp={handlePaneMouseUp}
       onWheel={handleWheel}
+      onDragEnter={handleCanvasDragEnter}
+      onDragOver={handleCanvasDragOver}
+      onDragLeave={handleCanvasDragLeave}
+      onDrop={handleCanvasDrop}
       style={{ cursor: isShiftHeld ? 'crosshair' : 'grab' }}
     >
+      {fileDragState !== "idle" && (
+        <div className="pointer-events-none absolute inset-4 z-[60] flex items-center justify-center rounded-xl border-2 border-dashed bg-background/70 backdrop-blur-sm">
+          <div className={cn(
+            "rounded-lg border px-6 py-4 text-center shadow-lg",
+            fileDragState === "valid"
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-destructive bg-destructive/10 text-destructive"
+          )}>
+            <p className="font-mono text-sm font-semibold">
+              {fileDragState === "valid" ? "Drop JSON to import" : "Unsupported file type"}
+            </p>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
+              {fileDragState === "valid" ? "Release anywhere on the canvas" : "Only .json graph files can be imported"}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Selection box */}
       {selectBox && (
         <div
@@ -761,7 +909,7 @@ export function GraphCanvas() {
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⢤⣶⡻⣞⣿⣺⢯⣽⣳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⢠⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣤⣿⣽⣻⢾⣽⣷⣾⣽⣻⣞⣷⣳⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣶⣄⡀⠀⠀⠀⣀⣲⣴⢶⣞⡿⣽⣞⡷⣯⢿⡽⣞⣿⠟⠋⠁⠉⠈⠳⣟⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⢶⣾⣿⡽⣯⣟⡾⣽⡷⣯⣟⡽⡾⣽⡯⠁⠀⠀⠀⠀⠀⠀⢮⣭⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀���⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⢶⣾⣿⡽⣯⣟⡾⣽⡷⣯⣟⡽⡾⣽⡯⠁⠀⠀⠀⠀⠀⠀⢮⣭⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⢞⣿⣿⢯⡿⣿⣯⣟⣷⣯⢿⣳⣟⡷⣽⣼⣻⣽⠀⠀⠀⠀⠀⠀⠀⢀⣼⡯⡗⠋⠤⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⣿⣿⣯⣽⣾⣿⣾⣗⡿⣯⡷⣯⣟⡷⣞⣼⣿⣀⠀⠀⠀⠀⢀⣠⡿⣏⡗⠈⠐⠈⠅⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⠛⠏⠉⠉⠽⢟⢿⣿⣿⣿⣿⣷⣻⢾⡽⣞⡷⠄⡹⣶⢿⣻⢿⣻⡽⢯⣼⢦⠶⠁⠈⠀⠀⠀⠀⠀⠀⠀
@@ -803,6 +951,8 @@ export function GraphCanvas() {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
         onConnect={onConnect}
         onInit={setReactFlowInstance}
         onNodeContextMenu={onNodeContextMenu}
@@ -810,6 +960,9 @@ export function GraphCanvas() {
         onPaneContextMenu={onPaneContextMenu}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDrag={onNodeDrag}
+        onNodeDragStop={onNodeDragStop}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

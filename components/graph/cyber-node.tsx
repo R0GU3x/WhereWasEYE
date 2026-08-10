@@ -49,12 +49,30 @@ function CyberNodeComponent({ data, selected }: NodeProps) {
         selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
       )}
     >
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="!h-3 !w-3 !border-2 !border-primary !bg-background"
-      />
-      
+      {(
+        [
+          ["top", Position.Top],
+          ["right", Position.Right],
+          ["bottom", Position.Bottom],
+          ["left", Position.Left],
+        ] as const
+      ).map(([position, handlePosition]) => (
+        <div key={position} className="pointer-events-none contents">
+          <Handle
+            id={`${position}-target`}
+            type="target"
+            position={handlePosition}
+            className="pointer-events-auto !h-6 !w-6 !border-0 !bg-transparent after:absolute after:left-1/2 after:top-1/2 after:h-1.5 after:w-1.5 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:bg-primary"
+          />
+          <Handle
+            id={`${position}-source`}
+            type="source"
+            position={handlePosition}
+            className="pointer-events-auto !h-6 !w-6 !border-0 !bg-transparent after:absolute after:left-1/2 after:top-1/2 after:h-1.5 after:w-1.5 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:bg-primary"
+          />
+        </div>
+      ))}
+
       <div className="flex items-center gap-2">
         <div
           className={cn(
@@ -72,12 +90,6 @@ function CyberNodeComponent({ data, selected }: NodeProps) {
           {nodeData.entityType}
         </div>
       )}
-      
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!h-3 !w-3 !border-2 !border-primary !bg-background"
-      />
     </div>
   )
 }

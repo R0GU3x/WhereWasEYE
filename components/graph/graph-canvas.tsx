@@ -12,6 +12,7 @@ import {
   type Connection,
   type Edge,
   type Node,
+  type XYPosition,
   type NodeMouseHandler,
   BackgroundVariant,
   MarkerType,
@@ -77,6 +78,13 @@ export function GraphCanvas() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
   const connectionStartNodeId = useRef<string | null>(null)
+  const nodeDragSession = useRef<{
+    nodeIds: string[]
+    startPositions: Record<string, XYPosition>
+    startPointer: XYPosition
+    axis: "x" | "y" | null
+    shiftState: boolean
+  } | null>(null)
   const { soundEnabled, toggleSound, playSound } = useSound()
 
   // Load from localStorage on mount
@@ -411,6 +419,60 @@ export function GraphCanvas() {
     },
     []
   )
+
+  const onNodeDragStart = useCallback((event: React.MouseEvent, node: Node<CyberNodeData>) => {
+    const nodeIds = selectedNodes.has(node.id)
+      ? Array.from(selectedNodes)
+      : [node.id]
+    const startPositions = Object.fromEntries(
+      nodes.filter((item) => nodeIds.includes(item.id)).map((item) => [item.id, { ...item.position }])
+    )
+
+    nodeDragSession.current = {
+      nodeIds,
+      startPositions,
+      startPointer: { ...node.position },
+      axis: null,
+      shiftState: event.shiftKey,
+    }
+  }, [nodes, selectedNodes])
+
+  const onNodeDrag = useCallback((event: React.MouseEvent, node: Node<CyberNodeData>) => {
+    const session = nodeDragSession.current
+    if (!session) return
+
+    if (event.shiftKey !== session.shiftState) {
+      session.startPositions = Object.fromEntries(
+        nodes.filter((item) => session.nodeIds.includes(item.id)).map((item) => [item.id, { ...item.position }])
+      )
+      session.startPointer = { ...node.position }
+      session.axis = null
+      session.shiftState = event.shiftKey
+    }
+
+    if (!event.shiftKey) return
+
+    const deltaX = node.position.x - session.startPointer.x
+    const deltaY = node.position.y - session.startPointer.y
+    if (!session.axis && (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2)) {
+      session.axis = Math.abs(deltaX) >= Math.abs(deltaY) ? "x" : "y"
+    }
+    if (!session.axis) return
+
+    const constrainedDelta = session.axis === "x" ? { x: deltaX, y: 0 } : { x: 0, y: deltaY }
+    setNodes((currentNodes) => currentNodes.map((item) => {
+      const start = session.startPositions[item.id]
+      if (!start) return item
+      return {
+        ...item,
+        position: { x: start.x + constrainedDelta.x, y: start.y + constrainedDelta.y },
+      }
+    }))
+  }, [nodes, setNodes])
+
+  const onNodeDragStop = useCallback(() => {
+    nodeDragSession.current = null
+  }, [])
 
   const onPaneClick = useCallback(() => {
     if (!isDrawingSelectBox) {
@@ -898,6 +960,9 @@ export function GraphCanvas() {
         onPaneContextMenu={onPaneContextMenu}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDrag={onNodeDrag}
+        onNodeDragStop={onNodeDragStop}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

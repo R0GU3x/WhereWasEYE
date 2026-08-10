@@ -62,13 +62,13 @@ function CyberNodeComponent({ data, selected }: NodeProps) {
             id={`${position}-target`}
             type="target"
             position={handlePosition}
-            className="!h-3 !w-3 !border-2 !border-primary !bg-background"
+            className="!h-5 !w-5 !border-0 !bg-transparent after:absolute after:h-2 after:w-2 after:rounded-full after:border after:border-primary after:bg-background"
           />
           <Handle
             id={`${position}-source`}
             type="source"
             position={handlePosition}
-            className="!h-3 !w-3 !border-2 !border-primary !bg-background"
+            className="!h-5 !w-5 !border-0 !bg-transparent after:absolute after:h-2 after:w-2 after:rounded-full after:border after:border-primary after:bg-background"
           />
         </div>
       ))}

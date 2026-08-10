@@ -25,6 +25,7 @@ import { DetailPanel } from "./detail-panel"
 import { CrossingEdge } from "./crossing-edge"
 import { SnapshotModal } from "./snapshot-modal"
 import { useSound } from "@/hooks/use-sound"
+import { toast } from "@/components/ui/use-toast"
 
 const APP_VERSION = "v4.7.3"
 
@@ -87,13 +88,13 @@ export function GraphCanvas() {
           ...node,
           data: {
             ...node.data,
-            status: node.data.status === "not-yet" ? "default" :
-              node.data.status === "running" ? "in-progress" :
-                node.data.status === "queued" ? "pending" :
-                  node.data.status === "pwned" ? "success" :
-                    node.data.status === "false-positive" ? "failed" :
-                      node.data.status === "exploitable" ? "failed" :
-                        node.data.status === "needs-review" ? "pending" :
+            status: String(node.data.status) === "not-yet" ? "default" :
+              String(node.data.status) === "running" ? "in-progress" :
+                String(node.data.status) === "queued" ? "pending" :
+                  String(node.data.status) === "pwned" ? "success" :
+                    String(node.data.status) === "false-positive" ? "failed" :
+                      String(node.data.status) === "exploitable" ? "failed" :
+                        String(node.data.status) === "needs-review" ? "pending" :
                           node.data.status || "default"
           }
         }))
@@ -117,13 +118,16 @@ export function GraphCanvas() {
     }
   }, [setNodes, setEdges])
 
-  // Adjust initial zoom level after ReactFlow initializes
+  // Fit restored graph content after ReactFlow initializes or nodes are restored.
   useEffect(() => {
-    if (reactFlowInstance) {
-      const zoomOutFactor = 1.10
-      reactFlowInstance.setCenter(0, 0, { zoom: zoomOutFactor, duration: 0 })
-    }
-  }, [reactFlowInstance])
+    if (!reactFlowInstance || nodes.length === 0) return
+
+    const frame = requestAnimationFrame(() => {
+      reactFlowInstance.fitView({ padding: 0.2, duration: 0, includeHiddenNodes: true })
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [reactFlowInstance, nodes.length])
 
   // Auto-save to localStorage
   useEffect(() => {
@@ -637,56 +641,77 @@ export function GraphCanvas() {
     URL.revokeObjectURL(url)
   }, [nodes, edges, useTidyEdges])
 
+  const importJsonFile = useCallback((file: File) => {
+    if (!file.name.toLowerCase().endsWith(".json") && file.type !== "application/json") {
+      toast({ title: "Unsupported file", description: "Please drop a JSON file.", variant: "destructive" })
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string)
+        if (!Array.isArray(data?.nodes) || !Array.isArray(data?.edges)) {
+          throw new Error("Invalid graph structure")
+        }
+
+        const updatedNodes = data.nodes.map((node: Node<CyberNodeData>) => ({
+          ...node,
+          data: {
+            ...node.data,
+            status: String(node.data.status) === "not-yet" ? "default" :
+              String(node.data.status) === "running" ? "in-progress" :
+                String(node.data.status) === "queued" ? "pending" :
+                  String(node.data.status) === "pwned" ? "success" :
+                    String(node.data.status) === "false-positive" ? "failed" :
+                      String(node.data.status) === "exploitable" ? "failed" :
+                        String(node.data.status) === "needs-review" ? "pending" :
+                          node.data.status || "default"
+          }
+        }))
+        setNodes(updatedNodes)
+
+        const tidyMode = data.useTidyEdges ?? false
+        setEdges(data.edges.map((edge: Edge) => ({
+          ...edge,
+          type: tidyMode ? "smoothstep" : "crossing",
+          data: { ...edge.data, useSmoothStep: tidyMode },
+        })))
+        if (data.useTidyEdges !== undefined) setUseTidyEdges(data.useTidyEdges)
+        toast({ title: "Graph imported", description: `${updatedNodes.length} nodes loaded.` })
+      } catch {
+        toast({ title: "Import failed", description: "The file is not a valid graph JSON file.", variant: "destructive" })
+      }
+    }
+    reader.onerror = () => toast({ title: "Import failed", description: "The file could not be read.", variant: "destructive" })
+    reader.readAsText(file)
+  }, [setNodes, setEdges])
+
   // Import function
   const handleImport = useCallback(() => {
     const input = document.createElement("input")
     input.type = "file"
-    input.accept = ".json"
+    input.accept = ".json,application/json"
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0]
-      if (file) {
-        const reader = new FileReader()
-        reader.onload = (event) => {
-          try {
-            const data = JSON.parse(event.target?.result as string)
-            if (data.nodes && data.edges) {
-              const updatedNodes = data.nodes.map((node: Node<CyberNodeData>) => ({
-                ...node,
-                data: {
-                  ...node.data,
-                  status: node.data.status === "not-yet" ? "default" :
-                    node.data.status === "running" ? "in-progress" :
-                      node.data.status === "queued" ? "pending" :
-                        node.data.status === "pwned" ? "success" :
-                          node.data.status === "false-positive" ? "failed" :
-                            node.data.status === "exploitable" ? "failed" :
-                              node.data.status === "needs-review" ? "pending" :
-                                node.data.status || "default"
-                }
-              }))
-              setNodes(updatedNodes)
-
-              const tidyMode = data.useTidyEdges ?? false
-              const updatedEdges = data.edges.map((edge: Edge) => ({
-                ...edge,
-                type: tidyMode ? "smoothstep" : "crossing",
-                data: { ...edge.data, useSmoothStep: tidyMode },
-              }))
-              setEdges(updatedEdges)
-
-              if (data.useTidyEdges !== undefined) {
-                setUseTidyEdges(data.useTidyEdges)
-              }
-            }
-          } catch {
-            console.error("Invalid JSON file")
-          }
-        }
-        reader.readAsText(file)
-      }
+      if (file) importJsonFile(file)
     }
     input.click()
-  }, [setNodes, setEdges])
+  }, [importJsonFile])
+
+  const handleCanvasDragOver = useCallback((event: React.DragEvent) => {
+    if (Array.from(event.dataTransfer.items).some((item) => item.kind === "file")) {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = "copy"
+    }
+  }, [])
+
+  const handleCanvasDrop = useCallback((event: React.DragEvent) => {
+    if (!Array.from(event.dataTransfer.items).some((item) => item.kind === "file")) return
+    event.preventDefault()
+    const file = event.dataTransfer.files[0]
+    if (file) importJsonFile(file)
+  }, [importJsonFile])
 
   // Bulk status update
   const handleBulkStatusUpdate = useCallback(
@@ -742,6 +767,8 @@ export function GraphCanvas() {
       onMouseMove={handlePaneMouseMove}
       onMouseUp={handlePaneMouseUp}
       onWheel={handleWheel}
+      onDragOver={handleCanvasDragOver}
+      onDrop={handleCanvasDrop}
       style={{ cursor: isShiftHeld ? 'crosshair' : 'grab' }}
     >
       {/* Selection box */}

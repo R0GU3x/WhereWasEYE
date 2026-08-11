@@ -84,8 +84,19 @@ export function SnapshotModal({
   const generateSVG = useCallback((): string => {
     const theme = themeMode === "light" ? LIGHT_THEME : DARK_THEME
     const padding = 60
-    const nodeWidth = 140
-    const nodeHeight = 50
+    const nodeWidth = 220
+    const nodeHeight = 96
+    const getWidth = (node: Node<CyberNodeData>) => node.measured?.width ?? node.width ?? nodeWidth
+    const getHeight = (node: Node<CyberNodeData>) => node.measured?.height ?? node.height ?? nodeHeight
+    const getHandlePoint = (node: Node<CyberNodeData>, handleId: string | null | undefined, isSource: boolean): { x: number; y: number } => {
+      const width = getWidth(node)
+      const height = getHeight(node)
+      const id = handleId ?? (isSource ? "bottom-source" : "top-target")
+      if (id.startsWith("left")) return { x: node.position.x, y: node.position.y + height / 2 }
+      if (id.startsWith("right")) return { x: node.position.x + width, y: node.position.y + height / 2 }
+      if (id.startsWith("top")) return { x: node.position.x + width / 2, y: node.position.y }
+      return { x: node.position.x + width / 2, y: node.position.y + height }
+    }
 
     if (exportNodes.length === 0) {
       return `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200">
@@ -93,17 +104,15 @@ export function SnapshotModal({
       </svg>`
     }
 
-    const xs = exportNodes.map((n) => n.position.x)
-    const ys = exportNodes.map((n) => n.position.y)
-    const minX = Math.min(...xs) - padding
-    const maxX = Math.max(...xs) + nodeWidth + padding
-    const minY = Math.min(...ys) - padding
-    const maxY = Math.max(...ys) + nodeHeight + padding
+    const minX = Math.min(...exportNodes.map((node) => node.position.x)) - padding
+    const maxX = Math.max(...exportNodes.map((node) => node.position.x + getWidth(node))) + padding
+    const minY = Math.min(...exportNodes.map((node) => node.position.y)) - padding
+    const maxY = Math.max(...exportNodes.map((node) => node.position.y + getHeight(node))) + padding
 
     const width = maxX - minX
     const height = maxY - minY
 
-    const nodePositions = new Map(exportNodes.map((n) => [n.id, n.position]))
+    const nodeMap = new Map(exportNodes.map((node) => [node.id, node]))
 
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${minX} ${minY} ${width} ${height}">`
 
@@ -113,16 +122,18 @@ export function SnapshotModal({
 
     // Draw edges
     exportEdges.forEach((edge) => {
-      const sourcePos = nodePositions.get(edge.source)
-      const targetPos = nodePositions.get(edge.target)
-      if (!sourcePos || !targetPos) return
+      const sourceNode = nodeMap.get(edge.source)
+      const targetNode = nodeMap.get(edge.target)
+      if (!sourceNode || !targetNode) return
 
-      const x1 = sourcePos.x + nodeWidth / 2
-      const y1 = sourcePos.y + nodeHeight
-      const x2 = targetPos.x + nodeWidth / 2
-      const y2 = targetPos.y
-
-      svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${theme.edgeColor}" stroke-width="2" marker-end="url(#arrowhead)"/>`
+      const sourcePoint = getHandlePoint(sourceNode, edge.sourceHandle, true)
+      const targetPoint = getHandlePoint(targetNode, edge.targetHandle, false)
+      const routePoints = Array.isArray(edge.data?.routePoints) && edge.data.routePoints.length > 1
+        ? edge.data.routePoints
+        : [sourcePoint, { x: sourcePoint.x, y: (sourcePoint.y + targetPoint.y) / 2 }, { x: targetPoint.x, y: (sourcePoint.y + targetPoint.y) / 2 }, targetPoint]
+      const points = [sourcePoint, ...routePoints.slice(1, -1), targetPoint]
+      const path = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x} ${point.y}`).join(" ")
+      svg += `<path d="${path}" fill="none" stroke="${theme.edgeColor}" stroke-width="2" marker-end="url(#arrowhead)"/>`
     })
 
     // Arrow marker
@@ -135,11 +146,12 @@ export function SnapshotModal({
       const data = node.data as CyberNodeData
       const x = node.position.x
       const y = node.position.y
+      const width = getWidth(node)
+      const height = getHeight(node)
       const statusColor = theme.statusColors[data.status] || theme.statusColors.default
 
       svg += `<g>
-        <rect x="${x}" y="${y}" width="${nodeWidth}" height="${nodeHeight}" rx="8" ry="8" 
-          fill="${theme.nodeBackground}" stroke="${statusColor}" stroke-width="2"/>
+        <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" ry="8" fill="${theme.nodeBackground}" stroke="${statusColor}" stroke-width="2"/>
         <circle cx="${x + 16}" cy="${y + 20}" r="5" fill="${statusColor}"/>
         <text x="${x + 28}" y="${y + 25}" font-family="monospace" font-size="12" fill="${theme.nodeText}">${escapeXml(data.label)}</text>
         ${data.entityType ? `<text x="${x + 12}" y="${y + 42}" font-family="monospace" font-size="10" fill="${theme.nodeSubtext}">${escapeXml(data.entityType)}</text>` : ""}

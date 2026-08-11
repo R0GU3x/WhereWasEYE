@@ -81,9 +81,15 @@ export function GraphCanvas() {
   const nodeDragSession = useRef<{
     nodeIds: string[]
     startPositions: Record<string, XYPosition>
-    startPointer: XYPosition
+    anchorId: string
+    anchorStart: XYPosition
+    pointerOffset: XYPosition
     axis: "x" | "y" | null
     shiftState: boolean
+  } | null>(null)
+  const [alignmentGuide, setAlignmentGuide] = useState<{
+    axis: "vertical" | "horizontal"
+    coordinate: number
   } | null>(null)
   const initialFitViewComplete = useRef(false)
   const historyRef = useRef<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
@@ -91,6 +97,7 @@ export function GraphCanvas() {
   const historyReadyRef = useRef(false)
   const restoringHistoryRef = useRef(false)
   const [, setHistoryVersion] = useState(0)
+  const isNodeDragging = useRef(false)
   const { soundEnabled, toggleSound, playSound } = useSound()
 
   // Load from localStorage on mount
@@ -169,7 +176,7 @@ export function GraphCanvas() {
   }, [pushHistory])
 
   useEffect(() => {
-    if (historyReadyRef.current) pushHistory(nodes, edges)
+    if (historyReadyRef.current && !isNodeDragging.current) pushHistory(nodes, edges)
   }, [nodes, edges, pushHistory])
 
   const restoreHistory = useCallback((index: number) => {
@@ -480,58 +487,88 @@ export function GraphCanvas() {
   )
 
   const onNodeDragStart = useCallback((event: React.MouseEvent, node: Node<CyberNodeData>) => {
-    const nodeIds = selectedNodes.has(node.id)
-      ? Array.from(selectedNodes)
-      : [node.id]
-    const startPositions = Object.fromEntries(
-      nodes.filter((item) => nodeIds.includes(item.id)).map((item) => [item.id, { ...item.position }])
-    )
-
+    const nodeIds = selectedNodes.has(node.id) ? Array.from(selectedNodes) : [node.id]
+    const draggedNodes = nodes.filter((item) => nodeIds.includes(item.id))
+    const pointer = reactFlowInstance?.screenToFlowPosition({ x: event.clientX, y: event.clientY }) ?? node.position
     nodeDragSession.current = {
       nodeIds,
-      startPositions,
-      startPointer: { ...node.position },
+      startPositions: Object.fromEntries(draggedNodes.map((item) => [item.id, { ...item.position }])),
+      anchorId: node.id,
+      anchorStart: { ...node.position },
+      pointerOffset: { x: pointer.x - node.position.x, y: pointer.y - node.position.y },
       axis: null,
       shiftState: event.shiftKey,
     }
-  }, [nodes, selectedNodes])
+    isNodeDragging.current = true
+    setAlignmentGuide(null)
+  }, [nodes, selectedNodes, reactFlowInstance])
 
   const onNodeDrag = useCallback((event: React.MouseEvent, node: Node<CyberNodeData>) => {
     const session = nodeDragSession.current
     if (!session) return
+    const pointer = reactFlowInstance?.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+    if (!pointer) return
 
     if (event.shiftKey !== session.shiftState) {
+      session.shiftState = event.shiftKey
+      session.axis = null
+      session.anchorStart = { ...node.position }
+      session.pointerOffset = { x: pointer.x - node.position.x, y: pointer.y - node.position.y }
       session.startPositions = Object.fromEntries(
         nodes.filter((item) => session.nodeIds.includes(item.id)).map((item) => [item.id, { ...item.position }])
       )
-      session.startPointer = { ...node.position }
-      session.axis = null
-      session.shiftState = event.shiftKey
     }
 
-    if (!event.shiftKey) return
-
-    const deltaX = node.position.x - session.startPointer.x
-    const deltaY = node.position.y - session.startPointer.y
-    if (!session.axis && (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2)) {
-      session.axis = Math.abs(deltaX) >= Math.abs(deltaY) ? "x" : "y"
+    const pointerNodePosition = {
+      x: pointer.x - session.pointerOffset.x,
+      y: pointer.y - session.pointerOffset.y,
     }
-    if (!session.axis) return
+    const rawDelta = {
+      x: pointerNodePosition.x - session.anchorStart.x,
+      y: pointerNodePosition.y - session.anchorStart.y,
+    }
+    if (event.shiftKey && !session.axis && (Math.abs(rawDelta.x) > 2 || Math.abs(rawDelta.y) > 2)) {
+      session.axis = Math.abs(rawDelta.x) >= Math.abs(rawDelta.y) ? "x" : "y"
+    }
+    const delta = event.shiftKey && session.axis === "x"
+      ? { x: rawDelta.x, y: 0 }
+      : event.shiftKey && session.axis === "y"
+        ? { x: 0, y: rawDelta.y }
+        : rawDelta
 
-    const constrainedDelta = session.axis === "x" ? { x: deltaX, y: 0 } : { x: 0, y: deltaY }
+    const moving = { x: session.anchorStart.x + delta.x, y: session.anchorStart.y + delta.y }
+    const movingWidth = node.measured?.width ?? node.width ?? 0
+    const movingHeight = node.measured?.height ?? node.height ?? 0
+    const others = nodes.filter((item) => !session.nodeIds.includes(item.id))
+    const threshold = 8 / (reactFlowInstance?.getZoom() ?? 1)
+    let best: { axis: "vertical" | "horizontal"; coordinate: number; distance: number } | null = null
+    for (const other of others) {
+      const width = other.measured?.width ?? other.width ?? movingWidth
+      const height = other.measured?.height ?? other.height ?? movingHeight
+      const verticalDistance = Math.abs(moving.x + movingWidth / 2 - (other.position.x + width / 2))
+      const horizontalDistance = Math.abs(moving.y + movingHeight / 2 - (other.position.y + height / 2))
+      if (verticalDistance <= threshold && (!best || verticalDistance < best.distance)) best = { axis: "vertical", coordinate: other.position.x + width / 2 - movingWidth / 2, distance: verticalDistance }
+      if (horizontalDistance <= threshold && (!best || horizontalDistance < best.distance)) best = { axis: "horizontal", coordinate: other.position.y + height / 2 - movingHeight / 2, distance: horizontalDistance }
+    }
+    const snapped = best && (!event.shiftKey || (session.axis === "x" && best.axis === "horizontal") || (session.axis === "y" && best.axis === "vertical"))
+      ? { x: best.axis === "vertical" ? best.coordinate : moving.x, y: best.axis === "horizontal" ? best.coordinate : moving.y }
+      : moving
+    setAlignmentGuide(best ? { axis: best.axis, coordinate: best.axis === "vertical" ? snapped.x + movingWidth / 2 : snapped.y + movingHeight / 2 } : null)
+
+    const finalDelta = { x: snapped.x - session.anchorStart.x, y: snapped.y - session.anchorStart.y }
     setNodes((currentNodes) => currentNodes.map((item) => {
       const start = session.startPositions[item.id]
       if (!start) return item
-      return {
-        ...item,
-        position: { x: start.x + constrainedDelta.x, y: start.y + constrainedDelta.y },
-      }
+      return { ...item, position: { x: start.x + finalDelta.x, y: start.y + finalDelta.y } }
     }))
-  }, [nodes, setNodes])
+  }, [nodes, reactFlowInstance, setNodes])
 
   const onNodeDragStop = useCallback(() => {
     nodeDragSession.current = null
-  }, [])
+    isNodeDragging.current = false
+    setAlignmentGuide(null)
+    requestAnimationFrame(() => pushHistory(nodes, edges))
+  }, [edges, nodes, pushHistory])
 
   const onPaneClick = useCallback(() => {
     if (!isDrawingSelectBox) {
@@ -918,6 +955,22 @@ export function GraphCanvas() {
       onDrop={handleCanvasDrop}
       style={{ cursor: isShiftHeld ? 'crosshair' : 'grab' }}
     >
+      {alignmentGuide && reactFlowInstance && (() => {
+        const guide = reactFlowInstance.flowToScreenPosition(
+          alignmentGuide.axis === "vertical"
+            ? { x: alignmentGuide.coordinate, y: 0 }
+            : { x: 0, y: alignmentGuide.coordinate }
+        )
+        return (
+          <div
+            className="pointer-events-none absolute z-40 border-primary/60"
+            style={alignmentGuide.axis === "vertical"
+              ? { left: guide.x, top: 0, bottom: 0, borderLeftWidth: 1, borderLeftStyle: "dashed" }
+              : { top: guide.y, left: 0, right: 0, borderTopWidth: 1, borderTopStyle: "dashed" }}
+          />
+        )
+      })()}
+
       {fileDragState !== "idle" && (
         <div className="pointer-events-none absolute inset-4 z-[60] flex items-center justify-center rounded-xl border-2 border-dashed bg-background/70 backdrop-blur-sm">
           <div className={cn(

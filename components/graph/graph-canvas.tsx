@@ -12,6 +12,7 @@ import {
   type Connection,
   type Edge,
   type Node,
+  type NodeChange,
   type XYPosition,
   type NodeMouseHandler,
   BackgroundVariant,
@@ -503,72 +504,62 @@ export function GraphCanvas() {
     setAlignmentGuide(null)
   }, [nodes, selectedNodes, reactFlowInstance])
 
-  const onNodeDrag = useCallback((event: React.MouseEvent, node: Node<CyberNodeData>) => {
+  const onNodeDrag = useCallback((_event: React.MouseEvent, node: Node<CyberNodeData>) => {
+    // React Flow owns the authoritative drag position. This callback only derives
+    // alignment feedback; it never writes node positions, preventing release drift.
     const session = nodeDragSession.current
-    if (!session) return
-    const pointer = reactFlowInstance?.screenToFlowPosition({ x: event.clientX, y: event.clientY })
-    if (!pointer) return
-
-    if (event.shiftKey !== session.shiftState) {
-      session.shiftState = event.shiftKey
-      session.axis = null
-      session.anchorStart = { ...node.position }
-      session.pointerOffset = { x: pointer.x - node.position.x, y: pointer.y - node.position.y }
-      session.startPositions = Object.fromEntries(
-        nodes.filter((item) => session.nodeIds.includes(item.id)).map((item) => [item.id, { ...item.position }])
-      )
-    }
-
-    const pointerNodePosition = {
-      x: pointer.x - session.pointerOffset.x,
-      y: pointer.y - session.pointerOffset.y,
-    }
-    const rawDelta = {
-      x: pointerNodePosition.x - session.anchorStart.x,
-      y: pointerNodePosition.y - session.anchorStart.y,
-    }
-    if (event.shiftKey && !session.axis && (Math.abs(rawDelta.x) > 2 || Math.abs(rawDelta.y) > 2)) {
-      session.axis = Math.abs(rawDelta.x) >= Math.abs(rawDelta.y) ? "x" : "y"
-    }
-    const delta = event.shiftKey && session.axis === "x"
-      ? { x: rawDelta.x, y: 0 }
-      : event.shiftKey && session.axis === "y"
-        ? { x: 0, y: rawDelta.y }
-        : rawDelta
-
-    const moving = { x: session.anchorStart.x + delta.x, y: session.anchorStart.y + delta.y }
+    if (!session || !reactFlowInstance) return
     const movingWidth = node.measured?.width ?? node.width ?? 0
     const movingHeight = node.measured?.height ?? node.height ?? 0
+    const threshold = 8 / reactFlowInstance.getZoom()
     const others = nodes.filter((item) => !session.nodeIds.includes(item.id))
-    const threshold = 8 / (reactFlowInstance?.getZoom() ?? 1)
     let best: { axis: "vertical" | "horizontal"; coordinate: number; distance: number } | null = null
     for (const other of others) {
       const width = other.measured?.width ?? other.width ?? movingWidth
       const height = other.measured?.height ?? other.height ?? movingHeight
-      const verticalDistance = Math.abs(moving.x + movingWidth / 2 - (other.position.x + width / 2))
-      const horizontalDistance = Math.abs(moving.y + movingHeight / 2 - (other.position.y + height / 2))
-      if (verticalDistance <= threshold && (!best || verticalDistance < best.distance)) best = { axis: "vertical", coordinate: other.position.x + width / 2 - movingWidth / 2, distance: verticalDistance }
-      if (horizontalDistance <= threshold && (!best || horizontalDistance < best.distance)) best = { axis: "horizontal", coordinate: other.position.y + height / 2 - movingHeight / 2, distance: horizontalDistance }
+      const verticalDistance = Math.abs(node.position.x + movingWidth / 2 - (other.position.x + width / 2))
+      const horizontalDistance = Math.abs(node.position.y + movingHeight / 2 - (other.position.y + height / 2))
+      if (verticalDistance <= threshold && (!best || verticalDistance < best.distance)) best = { axis: "vertical", coordinate: other.position.x + width / 2, distance: verticalDistance }
+      if (horizontalDistance <= threshold && (!best || horizontalDistance < best.distance)) best = { axis: "horizontal", coordinate: other.position.y + height / 2, distance: horizontalDistance }
     }
-    const snapped = best && (!event.shiftKey || (session.axis === "x" && best.axis === "horizontal") || (session.axis === "y" && best.axis === "vertical"))
-      ? { x: best.axis === "vertical" ? best.coordinate : moving.x, y: best.axis === "horizontal" ? best.coordinate : moving.y }
-      : moving
-    setAlignmentGuide(best ? { axis: best.axis, coordinate: best.axis === "vertical" ? snapped.x + movingWidth / 2 : snapped.y + movingHeight / 2 } : null)
-
-    const finalDelta = { x: snapped.x - session.anchorStart.x, y: snapped.y - session.anchorStart.y }
-    setNodes((currentNodes) => currentNodes.map((item) => {
-      const start = session.startPositions[item.id]
-      if (!start) return item
-      return { ...item, position: { x: start.x + finalDelta.x, y: start.y + finalDelta.y } }
-    }))
-  }, [nodes, reactFlowInstance, setNodes])
+    setAlignmentGuide(best ? { axis: best.axis, coordinate: best.coordinate } : null)
+  }, [nodes, reactFlowInstance])
 
   const onNodeDragStop = useCallback(() => {
     nodeDragSession.current = null
     isNodeDragging.current = false
     setAlignmentGuide(null)
-    requestAnimationFrame(() => pushHistory(nodes, edges))
-  }, [edges, nodes, pushHistory])
+  }, [])
+
+  const handleNodesChange = useCallback((changes: NodeChange<Node<CyberNodeData>>[]) => {
+    const session = nodeDragSession.current
+    if (!session || !isShiftHeld) {
+      onNodesChange(changes)
+      return
+    }
+
+    const anchorChange = changes.find((change) => change.type === "position" && change.id === session.anchorId)
+    if (anchorChange?.type === "position" && anchorChange.position) {
+      const deltaX = anchorChange.position.x - session.anchorStart.x
+      const deltaY = anchorChange.position.y - session.anchorStart.y
+      if (!session.axis && (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2)) {
+        session.axis = Math.abs(deltaX) >= Math.abs(deltaY) ? "x" : "y"
+      }
+    }
+
+    const constrained = changes.map((change) => {
+      if (change.type !== "position" || !change.position || !session.axis) return change
+      const start = session.startPositions[change.id]
+      if (!start) return change
+      return {
+        ...change,
+        position: session.axis === "x"
+          ? { x: change.position.x, y: start.y }
+          : { x: start.x, y: change.position.y },
+      }
+    })
+    onNodesChange(constrained)
+  }, [isShiftHeld, onNodesChange])
 
   const onPaneClick = useCallback(() => {
     if (!isDrawingSelectBox) {
@@ -1077,7 +1068,7 @@ export function GraphCanvas() {
             } : edge.markerEnd,
           }
         })}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}

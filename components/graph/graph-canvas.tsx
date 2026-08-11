@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useState, useRef, useEffect } from "react"
-import { CircleHelp, X, ChevronDown, ChevronUp, Workflow, Camera, Volume2, VolumeX } from "lucide-react"
+import { CircleHelp, X, ChevronDown, ChevronUp, Workflow, Camera, Volume2, VolumeX, Undo2, Redo2 } from "lucide-react"
 import {
   ReactFlow,
   Background,
@@ -86,6 +86,11 @@ export function GraphCanvas() {
     shiftState: boolean
   } | null>(null)
   const initialFitViewComplete = useRef(false)
+  const historyRef = useRef<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
+  const historyIndexRef = useRef(-1)
+  const historyReadyRef = useRef(false)
+  const restoringHistoryRef = useRef(false)
+  const [, setHistoryVersion] = useState(0)
   const { soundEnabled, toggleSound, playSound } = useSound()
 
   // Load from localStorage on mount
@@ -143,6 +148,56 @@ export function GraphCanvas() {
 
     return () => cancelAnimationFrame(frame)
   }, [reactFlowInstance, nodes.length])
+
+  const pushHistory = useCallback((nextNodes: Node<CyberNodeData>[], nextEdges: Edge[]) => {
+    if (restoringHistoryRef.current) return
+    const snapshot = { nodes: structuredClone(nextNodes), edges: structuredClone(nextEdges) }
+    const current = historyRef.current[historyIndexRef.current]
+    if (current && JSON.stringify(current) === JSON.stringify(snapshot)) return
+    historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1)
+    historyRef.current.push(snapshot)
+    if (historyRef.current.length > 50) historyRef.current.shift()
+    historyIndexRef.current = historyRef.current.length - 1
+    setHistoryVersion((value) => value + 1)
+  }, [])
+
+  useEffect(() => {
+    if (!historyReadyRef.current) {
+      historyReadyRef.current = true
+      pushHistory([], [])
+    }
+  }, [pushHistory])
+
+  useEffect(() => {
+    if (historyReadyRef.current) pushHistory(nodes, edges)
+  }, [nodes, edges, pushHistory])
+
+  const restoreHistory = useCallback((index: number) => {
+    const snapshot = historyRef.current[index]
+    if (!snapshot) return
+    restoringHistoryRef.current = true
+    setNodes(structuredClone(snapshot.nodes))
+    setEdges(structuredClone(snapshot.edges))
+    historyIndexRef.current = index
+    setHistoryVersion((value) => value + 1)
+    requestAnimationFrame(() => { restoringHistoryRef.current = false })
+  }, [setNodes, setEdges])
+
+  const undo = useCallback(() => restoreHistory(historyIndexRef.current - 1), [restoreHistory])
+  const redo = useCallback(() => restoreHistory(historyIndexRef.current + 1), [restoreHistory])
+
+  useEffect(() => {
+    const handleHistoryKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") return
+      const target = event.target as HTMLElement
+      if (target.isContentEditable || ["INPUT", "TEXTAREA"].includes(target.tagName)) return
+      event.preventDefault()
+      if (event.shiftKey) redo()
+      else undo()
+    }
+    window.addEventListener("keydown", handleHistoryKey)
+    return () => window.removeEventListener("keydown", handleHistoryKey)
+  }, [undo, redo])
 
   // Auto-save to localStorage
   useEffect(() => {
@@ -952,7 +1007,23 @@ export function GraphCanvas() {
           ...node,
           selected: selectedNodes.has(node.id) || node.selected,
         }))}
-        edges={edges}
+        edges={edges.map((edge) => {
+          const isOutgoing = selectedNode?.id === edge.source
+          const isIncoming = selectedNode?.id === edge.target
+          return {
+            ...edge,
+            style: {
+              ...edge.style,
+              stroke: isOutgoing ? "var(--primary)" : isIncoming ? "var(--muted-foreground)" : "var(--border)",
+              strokeWidth: isOutgoing ? 3 : 2,
+              opacity: selectedNode && !isOutgoing && !isIncoming ? 0.35 : 1,
+            },
+            markerEnd: edge.markerEnd && typeof edge.markerEnd === "object" ? {
+              ...edge.markerEnd,
+              color: isOutgoing ? "var(--primary)" : "var(--border)",
+            } : edge.markerEnd,
+          }
+        })}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnectStart={onConnectStart}
@@ -999,6 +1070,27 @@ export function GraphCanvas() {
           position="bottom-right"
         />
       </ReactFlow>
+
+      <div className="absolute bottom-4 right-20 z-10 flex items-center gap-1 rounded-lg border border-border bg-card/80 p-1 backdrop-blur-sm">
+        <button
+          type="button"
+          onClick={undo}
+          disabled={historyIndexRef.current <= 0}
+          aria-label="Undo"
+          className="rounded p-2 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:pointer-events-none disabled:opacity-30"
+        >
+          <Undo2 size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={redo}
+          disabled={historyIndexRef.current < 0 || historyIndexRef.current >= historyRef.current.length - 1}
+          aria-label="Redo"
+          className="rounded p-2 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:pointer-events-none disabled:opacity-30"
+        >
+          <Redo2 size={16} />
+        </button>
+      </div>
 
       {/* Help Button */}
       <div className="absolute bottom-4 left-4 z-10">

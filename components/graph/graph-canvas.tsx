@@ -535,12 +535,49 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
 
   const handleNodesChange = useCallback((changes: NodeChange<Node<CyberNodeData>>[]) => {
     const session = nodeDragSession.current
-    if (!session || !isShiftHeld) {
+    if (!session) {
       onNodesChange(changes)
       return
     }
 
-    const anchorChange = changes.find((change) => change.type === "position" && change.id === session.anchorId)
+    const positionChanges = changes.filter((change): change is Extract<NodeChange<Node<CyberNodeData>>, { type: "position" }> => change.type === "position" && Boolean(change.position))
+    const anchorChange = positionChanges.find((change) => change.id === session.anchorId)
+    const anchorNode = nodes.find((node) => node.id === session.anchorId)
+    const zoom = reactFlowInstance?.getZoom() ?? 1
+    const snapThreshold = 8 / zoom
+    let snapDelta: XYPosition | null = null
+
+    if (anchorChange?.position && anchorNode && reactFlowInstance) {
+      const anchorWidth = anchorNode.measured?.width ?? anchorNode.width ?? 0
+      const anchorHeight = anchorNode.measured?.height ?? anchorNode.height ?? 0
+      const anchorCenter = {
+        x: anchorChange.position.x + anchorWidth / 2,
+        y: anchorChange.position.y + anchorHeight / 2,
+      }
+      const others = nodes.filter((node) => !session.nodeIds.includes(node.id))
+      let best: { axis: "x" | "y"; delta: number; distance: number } | null = null
+      for (const other of others) {
+        const width = other.measured?.width ?? other.width ?? anchorWidth
+        const height = other.measured?.height ?? other.height ?? anchorHeight
+        const xDelta = other.position.x + width / 2 - anchorCenter.x
+        const yDelta = other.position.y + height / 2 - anchorCenter.y
+        if (Math.abs(xDelta) <= snapThreshold && (!best || Math.abs(xDelta) < best.distance)) best = { axis: "x", delta: xDelta, distance: Math.abs(xDelta) }
+        if (Math.abs(yDelta) <= snapThreshold && (!best || Math.abs(yDelta) < best.distance)) best = { axis: "y", delta: yDelta, distance: Math.abs(yDelta) }
+      }
+      if (best && (!isShiftHeld || !session.axis || (session.axis === "x" && best.axis === "x") || (session.axis === "y" && best.axis === "y"))) {
+        snapDelta = best.axis === "x" ? { x: best.delta, y: 0 } : { x: 0, y: best.delta }
+        setAlignmentGuide({ axis: best.axis === "x" ? "vertical" : "horizontal", coordinate: best.axis === "x" ? anchorCenter.x + best.delta : anchorCenter.y + best.delta })
+      }
+    }
+
+    if (!isShiftHeld) {
+      onNodesChange(snapDelta ? changes.map((change) => {
+        if (change.type !== "position" || !change.position) return change
+        return { ...change, position: { x: change.position.x + snapDelta!.x, y: change.position.y + snapDelta!.y } }
+      }) : changes)
+      return
+    }
+
     if (anchorChange?.type === "position" && anchorChange.position) {
       const deltaX = anchorChange.position.x - session.anchorStart.x
       const deltaY = anchorChange.position.y - session.anchorStart.y
@@ -550,14 +587,18 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     }
 
     const constrained = changes.map((change) => {
-      if (change.type !== "position" || !change.position || !session.axis) return change
+      if (change.type !== "position" || !change.position) return change
       const start = session.startPositions[change.id]
-      if (!start) return change
+      const position = {
+        x: change.position.x + (snapDelta?.x ?? 0),
+        y: change.position.y + (snapDelta?.y ?? 0),
+      }
+      if (!start || !session.axis) return { ...change, position }
       return {
         ...change,
         position: session.axis === "x"
-          ? { x: change.position.x, y: start.y }
-          : { x: start.x, y: change.position.y },
+          ? { x: position.x, y: start.y }
+          : { x: start.x, y: position.y },
       }
     })
     onNodesChange(constrained)
@@ -1023,7 +1064,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣷⣷⣶⣳⣶⣺⣿⣿⣳⢯⣟⣿⣿⣳⢯⠛⠅⠃⠀⠀⣴⣿⡿⣬⢶⠾⠙⣊⣥⠾⡒⠊⢁⢠⠣⣌⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢺⡽⣾⡽⣯⣟⣿⡿⣯⣿⣿⣾⢿⣿⠳⢏⣈⢠⠀⠀⣰⢿⡿⣽⣉⡶⠌⠋⠉⣀⡀⠁⠀⠀⠀⣘⡐⣂⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣽⣳⣟⣳⣟⣾⣽⣿⣿⣿⣿⣿⣦⣜⡻⡽⠆⠧⣴⡟⣯⢟⡳⣭⠲⠄⠐⠀⠀⠀⠈⠁⠉⠑⢊⡕⢃⠄⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⣿⣾⣿⣯⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⣾⢧⠀⠹⠾⡵⡞⡽⢢⣃⠐⠀⠀⠄⡐⠀⠀⠀⡘⢦⠘⣌⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⣿⣾⣿⣯⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⣾��⠀⠹⠾⡵⡞⡽⢢⣃⠐⠀⠀⠄⡐⠀⠀⠀⡘⢦⠘⣌⠀⠀
                                           ⠀�����⠀⠀⠀⠀⠀⠀⠀⠀⠐⠹⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢯⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠒⡈⠀⡀⠄⡑⠢⣉⠴⣈⣆
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢯⣏⡴⣶⣵⣢⢤⢠⡀⡄⢠⠐⡰⢌⡱⠀⡁⡀⠆⡥⠆⡥⣛⡽⣾
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠔⠉⠀⠀⢽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣼⣻⢷⣯⡽⣞⣷⣻⡼⣡⢋⡔⠣⠜⡐⢐⠠⡓⣤⣙⣲⣽⣻⢷

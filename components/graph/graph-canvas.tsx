@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useState, useRef, useEffect } from "react"
-import { CircleHelp, X, ChevronDown, ChevronUp, Workflow, Camera, Volume2, VolumeX, Undo2, Redo2 } from "lucide-react"
+import { CircleHelp, X, ChevronDown, ChevronUp, Workflow, Camera, Volume2, VolumeX } from "lucide-react"
 import {
   ReactFlow,
   Background,
@@ -1116,27 +1116,6 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
           position="bottom-right"
         />
       </ReactFlow>
-
-      <div className="absolute bottom-4 right-20 z-10 flex items-center gap-1 rounded-lg border border-border bg-card/80 p-1 backdrop-blur-sm">
-        <button
-          type="button"
-          onClick={undo}
-          disabled={historyIndexRef.current <= 0}
-          aria-label="Undo"
-          className="rounded p-2 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:pointer-events-none disabled:opacity-30"
-        >
-          <Undo2 size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={redo}
-          disabled={historyIndexRef.current < 0 || historyIndexRef.current >= historyRef.current.length - 1}
-          aria-label="Redo"
-          className="rounded p-2 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:pointer-events-none disabled:opacity-30"
-        >
-          <Redo2 size={16} />
-        </button>
-      </div>
 
       {/* Help Button */}
       <div className="absolute bottom-4 left-4 z-10">

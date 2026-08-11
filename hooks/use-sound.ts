@@ -26,18 +26,20 @@ const SOUND_CONFIG: Record<SoundType, { frequency: number; duration: number; typ
 const STORAGE_KEY = "cyber-graph-sound-enabled"
 
 export function useSound() {
-  const [soundEnabled, setSoundEnabled] = useState(false)
+  const [soundEnabled, setSoundEnabled] = useState(true)
   const audioContextRef = useRef<AudioContext | null>(null)
+  const hydratedRef = useRef(false)
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored !== null) {
-      setSoundEnabled(stored === "true")
-    }
+    if (stored !== null) setSoundEnabled(stored === "true")
+    hydratedRef.current = true
   }, [])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, String(soundEnabled))
+    if (hydratedRef.current) {
+      localStorage.setItem(STORAGE_KEY, String(soundEnabled))
+    }
   }, [soundEnabled])
 
   const getAudioContext = useCallback(() => {

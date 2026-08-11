@@ -64,6 +64,7 @@ export function GraphCanvas() {
   const [selectedNode, setSelectedNode] = useState<Node<CyberNodeData> | null>(null)
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set())
   const [showHelp, setShowHelp] = useState(false)
+  const helpContainerRef = useRef<HTMLDivElement>(null)
   const [minimapExpanded, setMinimapExpanded] = useState(true)
   const [isShiftHeld, setIsShiftHeld] = useState(false)
   const [isDrawingSelectBox, setIsDrawingSelectBox] = useState(false)
@@ -824,6 +825,19 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     }
   }, [selectedNode, selectedNodes, requestDeleteNode, snapshotModal, bulkDeleteModal, deleteConfirmNodeId, clearCanvasModal, showHelp])
 
+  useEffect(() => {
+    if (!showHelp) return
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node && helpContainerRef.current?.contains(target)) return
+      setShowHelp(false)
+    }
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown)
+    return () => document.removeEventListener("pointerdown", handleOutsidePointerDown)
+  }, [showHelp])
+
   // Export function
   const handleExport = useCallback(() => {
     const data = JSON.stringify({ nodes, edges, useTidyEdges }, null, 2)
@@ -1051,7 +1065,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡸⣞⡇⠀⠀⠀⣼⡿⠀⠀⠀⠀⠉⠉⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣧⢿⣽⡀⠀⠉⠛⠁⠀⣰⣾⠿⠿⣦⡀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣞⡿⣞⡅⠀⠀⠀⠀⠘⠏⠓⠒⠒⠀⠀⠀⠀⠀��
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣟⢾⣽⢫⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣟⢾⣽⢫⡿⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⢤⣶⡻⣞⣿⣺⢯⣽⣳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⢠⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣤⣿⣽⣻⢾⣽⣷⣾⣽⣻⣞⣷⣳⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣶⣄⡀⠀⠀⠀⣀⣲⣴⢶⣞⡿⣽⣞⡷⣯⢿⡽⣞⣿⠟⠋⠁⠉⠈⠳⣟⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -1159,7 +1173,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       </ReactFlow>
 
       {/* Help Button */}
-      <div className="absolute bottom-4 left-4 z-10">
+      <div ref={helpContainerRef} className="absolute bottom-4 left-4 z-10">
         <button
           onClick={() => setShowHelp(!showHelp)}
           className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur-sm transition-all duration-300 hover:bg-muted hover:text-foreground"

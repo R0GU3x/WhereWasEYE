@@ -91,12 +91,15 @@ export function GraphCanvas() {
     coordinate: number
   }>>([])
   const initialFitViewComplete = useRef(false)
+  const restoredGraphRef = useRef(false)
   const historyRef = useRef<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
   const historyIndexRef = useRef(-1)
   const historyReadyRef = useRef(false)
   const restoringHistoryRef = useRef(false)
   const [, setHistoryVersion] = useState(0)
   const isNodeDragging = useRef(false)
+  const snapActiveRef = useRef(false)
+  const nodeWidthRef = useRef(new Map<string, number>())
   const { soundEnabled, toggleSound, playSound } = useSound()
 
   // Load from localStorage on mount
@@ -121,6 +124,7 @@ export function GraphCanvas() {
                           node.data.status || "default"
           }
         }))
+        restoredGraphRef.current = updatedNodes.length > 0
         setNodes(updatedNodes)
 
         // Update edges with proper type
@@ -144,7 +148,14 @@ export function GraphCanvas() {
   // Fit once after the browser page initializes and restored nodes are available.
   // The ref prevents graph edits from ever re-triggering this automatic viewport change.
   useEffect(() => {
-    if (initialFitViewComplete.current || !reactFlowInstance || nodes.length === 0) return
+    for (const node of nodes) {
+      const width = node.measured?.width ?? node.width
+      if (width) nodeWidthRef.current.set(node.id, width)
+    }
+  }, [nodes])
+
+  useEffect(() => {
+    if (initialFitViewComplete.current || !restoredGraphRef.current || !reactFlowInstance || nodes.length === 0) return
 
     const frame = requestAnimationFrame(() => {
       if (initialFitViewComplete.current) return
@@ -189,8 +200,18 @@ export function GraphCanvas() {
     requestAnimationFrame(() => { restoringHistoryRef.current = false })
   }, [setNodes, setEdges])
 
-  const undo = useCallback(() => restoreHistory(historyIndexRef.current - 1), [restoreHistory])
-  const redo = useCallback(() => restoreHistory(historyIndexRef.current + 1), [restoreHistory])
+  const undo = useCallback(() => {
+    const nextIndex = historyIndexRef.current - 1
+    if (!historyRef.current[nextIndex]) return
+    restoreHistory(nextIndex)
+    playSound("undo")
+  }, [playSound, restoreHistory])
+  const redo = useCallback(() => {
+    const nextIndex = historyIndexRef.current + 1
+    if (!historyRef.current[nextIndex]) return
+    restoreHistory(nextIndex)
+    playSound("redo")
+  }, [playSound, restoreHistory])
 
   useEffect(() => {
     const handleHistoryKey = (event: KeyboardEvent) => {
@@ -311,6 +332,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
             data: { useSmoothStep: useTidyEdges },
           }
           setEdges((eds) => [...eds, newEdge])
+          playSound("edgeConnect")
       }
     },
     [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges, useTidyEdges, playSound]
@@ -494,6 +516,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       anchorId: node.id,
     }
     isNodeDragging.current = true
+    snapActiveRef.current = false
     setAlignmentGuides([])
   }, [selectedNodes])
 
@@ -524,13 +547,42 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
   const onNodeDragStop = useCallback(() => {
     nodeDragSession.current = null
     isNodeDragging.current = false
+    snapActiveRef.current = false
     setAlignmentGuides([])
   }, [])
 
   const handleNodesChange = useCallback((changes: NodeChange<Node<CyberNodeData>>[]) => {
+    const dimensionChanges = changes.filter(
+      (change): change is Extract<NodeChange<Node<CyberNodeData>>, { type: "dimensions" }> => change.type === "dimensions" && Boolean(change.dimensions)
+    )
+    const positionCorrection = new Map<string, number>()
+
+    for (const change of dimensionChanges) {
+      const node = nodes.find((item) => item.id === change.id)
+      if (!node || !change.dimensions?.width) continue
+      const newWidth = change.dimensions.width
+      const oldWidth = nodeWidthRef.current.get(change.id) ?? node.width ?? node.measured?.width ?? newWidth
+      nodeWidthRef.current.set(change.id, newWidth)
+      positionCorrection.set(change.id, (oldWidth - newWidth) / 2)
+    }
+
+    const correctedChanges = changes.map((change) => {
+      if (!("id" in change)) return change
+      const correction = positionCorrection.get(change.id)
+      if (correction === undefined || change.type !== "position" || !change.position) return change
+      return { ...change, position: { ...change.position, x: change.position.x + correction } }
+    })
+    const syntheticPositionChanges = Array.from(positionCorrection.entries())
+      .filter(([id]) => !changes.some((change) => "id" in change && change.id === id && change.type === "position"))
+      .map(([id, x]) => {
+        const node = nodes.find((item) => item.id === id)
+        return node ? { id, type: "position" as const, position: { x: node.position.x + x, y: node.position.y } } : null
+      })
+      .filter((change): change is { id: string; type: "position"; position: XYPosition } => Boolean(change))
+
     const session = nodeDragSession.current
     if (!session) {
-      onNodesChange(changes)
+      onNodesChange([...correctedChanges, ...syntheticPositionChanges])
       return
     }
 
@@ -572,11 +624,19 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       ))
     }
 
-    onNodesChange(snapDelta.x || snapDelta.y ? changes.map((change) => {
+    const isSnapped = Boolean(snapDelta.x || snapDelta.y)
+    if (isSnapped && !snapActiveRef.current) {
+      playSound("snap")
+    }
+    snapActiveRef.current = isSnapped
+
+    const changesWithSnap = snapDelta.x || snapDelta.y ? correctedChanges.map((change) => {
       if (change.type !== "position" || !change.position) return change
       return { ...change, position: { x: change.position.x + snapDelta.x, y: change.position.y + snapDelta.y } }
-    }) : changes)
-  }, [onNodesChange, nodes, reactFlowInstance])
+    }) : correctedChanges
+
+    onNodesChange([...changesWithSnap, ...syntheticPositionChanges])
+  }, [onNodesChange, nodes, playSound, reactFlowInstance])
 
   const onPaneClick = useCallback(() => {
     if (!isDrawingSelectBox) {
@@ -1077,8 +1137,10 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
         </div>
       )}
 
-      <ReactFlow
-        nodes={nodes.map((node) => ({
+        <ReactFlow
+          defaultViewport={{ x: 0, y: 0, zoom: 0.75 }}
+          nodes={nodes.map((node) => ({
+
           ...node,
           selected: selectedNodes.has(node.id) || node.selected,
         }))}

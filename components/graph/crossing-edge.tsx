@@ -174,7 +174,14 @@ function CrossingEdgeComponent({
 
   return (
     <>
-      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
+      <BaseEdge
+        path={edgePath}
+        markerEnd={markerEnd}
+        style={{
+          ...style,
+          filter: "drop-shadow(0 0 2px var(--primary)) drop-shadow(0 0 4px color-mix(in oklab, var(--primary) 45%, transparent))",
+        }}
+      />
       <EdgeLabelRenderer>
         {crossingPoints.map((point, index) => (
           <div

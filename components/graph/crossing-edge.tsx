@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useMemo, useRef } from "react"
+import { memo, useMemo } from "react"
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -69,12 +69,9 @@ function getSmoothStepPoints(
   ]
 }
 
-type Point = { x: number; y: number }
-
 interface CrossingEdgeProps extends EdgeProps {
   data?: {
     useSmoothStep?: boolean
-    routePoints?: Point[]
   }
 }
 
@@ -90,21 +87,10 @@ function CrossingEdgeComponent({
   markerEnd,
   data,
 }: CrossingEdgeProps) {
-  const { getEdges, getNodes, setEdges, screenToFlowPosition } = useReactFlow()
+  const { getEdges, getNodes } = useReactFlow()
   const useSmoothStep = data?.useSmoothStep ?? false
-  const routePoints = data?.routePoints
-  const dragRef = useRef<{ index: number; start: Point; pointer: Point } | null>(null)
 
-  const defaultPoints: Point[] = [
-    { x: sourceX, y: sourceY },
-    { x: sourceX, y: (sourceY + targetY) / 2 },
-    { x: targetX, y: (sourceY + targetY) / 2 },
-    { x: targetX, y: targetY },
-  ]
-  const points = routePoints && routePoints.length >= 2 ? routePoints : defaultPoints
-  const routePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ")
-
-  const [edgePath] = useSmoothStep && !routePoints
+  const [edgePath] = useSmoothStep
     ? getSmoothStepPath({
         sourceX,
         sourceY,
@@ -114,16 +100,14 @@ function CrossingEdgeComponent({
         targetPosition,
         borderRadius: 8,
       })
-    : routePoints
-      ? [routePath, 0, 0, 0, 0]
-      : getBezierPath({
-          sourceX,
-          sourceY,
-          sourcePosition,
-          targetX,
-          targetY,
-          targetPosition,
-        })
+    : getBezierPath({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+      })
 
   // Find crossing points with other edges
   const crossingPoints = useMemo(() => {
@@ -192,49 +176,6 @@ function CrossingEdgeComponent({
     <>
       <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
       <EdgeLabelRenderer>
-        {points.slice(0, -1).map((point, index) => {
-          const next = points[index + 1]
-          const horizontal = Math.abs(next.x - point.x) >= Math.abs(next.y - point.y)
-          const center = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 }
-          const length = Math.hypot(next.x - point.x, next.y - point.y)
-          const beginDrag = (event: React.PointerEvent) => {
-            event.stopPropagation()
-            event.currentTarget.setPointerCapture(event.pointerId)
-            const pointer = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-            dragRef.current = { index, start: { ...center }, pointer }
-          }
-          const moveDrag = (event: React.PointerEvent) => {
-            const drag = dragRef.current
-            if (!drag) return
-            const pointer = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-            const delta = horizontal ? pointer.y - drag.pointer.y : pointer.x - drag.pointer.x
-            const updated = points.map((item, routeIndex) => {
-              if (routeIndex === index || routeIndex === index + 1) {
-                return horizontal ? { ...item, y: item.y + delta } : { ...item, x: item.x + delta }
-              }
-              return item
-            })
-            drag.pointer = pointer
-            setEdges((edges) => edges.map((edge) => edge.id === id ? { ...edge, data: { ...edge.data, routePoints: updated } } : edge))
-          }
-          const endDrag = () => { dragRef.current = null }
-          return (
-            <div
-              key={`${id}-route-${index}`}
-              className="pointer-events-auto absolute rounded-full bg-transparent hover:bg-primary/20"
-              style={{
-                width: horizontal ? `${Math.max(length, 24)}px` : "14px",
-                height: horizontal ? "14px" : `${Math.max(length, 24)}px`,
-                transform: `translate(-50%, -50%) translate(${center.x}px, ${center.y}px)`,
-                cursor: horizontal ? "ns-resize" : "ew-resize",
-              }}
-              onPointerDown={beginDrag}
-              onPointerMove={moveDrag}
-              onPointerUp={endDrag}
-              aria-label="Drag to reroute edge"
-            />
-          )
-        })}
         {crossingPoints.map((point, index) => (
           <div
             key={`${id}-crossing-${index}`}

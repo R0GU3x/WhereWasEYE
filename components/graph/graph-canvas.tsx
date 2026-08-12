@@ -81,18 +81,15 @@ export function GraphCanvas() {
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
   const connectionStartNodeId = useRef<string | null>(null)
   const nodeDragSession = useRef<{
-    nodeIds: string[]
-    startPositions: Record<string, XYPosition>
-    anchorId: string
-    anchorStart: XYPosition
-    pointerOffset: XYPosition
-    axis: "x" | "y" | null
-    shiftState: boolean
+  nodeIds: string[]
+  anchorId: string
+
+
   } | null>(null)
-  const [alignmentGuide, setAlignmentGuide] = useState<{
+  const [alignmentGuides, setAlignmentGuides] = useState<Array<{
     axis: "vertical" | "horizontal"
     coordinate: number
-  } | null>(null)
+  }>>([])
   const initialFitViewComplete = useRef(false)
   const historyRef = useRef<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
   const historyIndexRef = useRef(-1)
@@ -131,7 +128,7 @@ export function GraphCanvas() {
         const updatedEdges = (savedEdges || []).map((edge: Edge) => ({
           ...edge,
           type: tidyMode ? "smoothstep" : "crossing",
-          data: { ...edge.data, useSmoothStep: tidyMode },
+          data: { useSmoothStep: tidyMode },
         }))
         setEdges(updatedEdges)
 
@@ -311,7 +308,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
             targetHandle: "top-target",
             ...defaultEdgeOptions,
             type: useTidyEdges ? "smoothstep" : "crossing",
-            data: { useSmoothStep: useTidyEdges, routePoints: [] },
+            data: { useSmoothStep: useTidyEdges },
           }
           setEdges((eds) => [...eds, newEdge])
       }
@@ -490,22 +487,15 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     []
   )
 
-  const onNodeDragStart = useCallback((event: React.MouseEvent, node: Node<CyberNodeData>) => {
+  const onNodeDragStart = useCallback((_event: React.MouseEvent, node: Node<CyberNodeData>) => {
     const nodeIds = selectedNodes.has(node.id) ? Array.from(selectedNodes) : [node.id]
-    const draggedNodes = nodes.filter((item) => nodeIds.includes(item.id))
-    const pointer = reactFlowInstance?.screenToFlowPosition({ x: event.clientX, y: event.clientY }) ?? node.position
     nodeDragSession.current = {
       nodeIds,
-      startPositions: Object.fromEntries(draggedNodes.map((item) => [item.id, { ...item.position }])),
       anchorId: node.id,
-      anchorStart: { ...node.position },
-      pointerOffset: { x: pointer.x - node.position.x, y: pointer.y - node.position.y },
-      axis: null,
-      shiftState: event.shiftKey,
     }
     isNodeDragging.current = true
-    setAlignmentGuide(null)
-  }, [nodes, selectedNodes, reactFlowInstance])
+    setAlignmentGuides([])
+  }, [selectedNodes])
 
   const onNodeDrag = useCallback((_event: React.MouseEvent, node: Node<CyberNodeData>) => {
     // React Flow owns the authoritative drag position. This callback only derives
@@ -516,22 +506,25 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     const movingHeight = node.measured?.height ?? node.height ?? 0
     const threshold = 8 / reactFlowInstance.getZoom()
     const others = nodes.filter((item) => !session.nodeIds.includes(item.id))
-    let best: { axis: "vertical" | "horizontal"; coordinate: number; distance: number } | null = null
+    const candidates: Array<{ axis: "vertical" | "horizontal"; coordinate: number; distance: number }> = []
     for (const other of others) {
       const width = other.measured?.width ?? other.width ?? movingWidth
       const height = other.measured?.height ?? other.height ?? movingHeight
       const verticalDistance = Math.abs(node.position.x + movingWidth / 2 - (other.position.x + width / 2))
       const horizontalDistance = Math.abs(node.position.y + movingHeight / 2 - (other.position.y + height / 2))
-      if (verticalDistance <= threshold && (!best || verticalDistance < best.distance)) best = { axis: "vertical", coordinate: other.position.x + width / 2, distance: verticalDistance }
-      if (horizontalDistance <= threshold && (!best || horizontalDistance < best.distance)) best = { axis: "horizontal", coordinate: other.position.y + height / 2, distance: horizontalDistance }
+      if (verticalDistance <= threshold) candidates.push({ axis: "vertical", coordinate: other.position.x + width / 2, distance: verticalDistance })
+      if (horizontalDistance <= threshold) candidates.push({ axis: "horizontal", coordinate: other.position.y + height / 2, distance: horizontalDistance })
     }
-    setAlignmentGuide(best ? { axis: best.axis, coordinate: best.coordinate } : null)
+    const guides = candidates.filter((candidate, index, all) =>
+      all.findIndex((item) => item.axis === candidate.axis && Math.abs(item.coordinate - candidate.coordinate) < 0.5) === index
+    )
+    setAlignmentGuides(guides.map(({ axis, coordinate }) => ({ axis, coordinate })))
   }, [nodes, reactFlowInstance])
 
   const onNodeDragStop = useCallback(() => {
     nodeDragSession.current = null
     isNodeDragging.current = false
-    setAlignmentGuide(null)
+    setAlignmentGuides([])
   }, [])
 
   const handleNodesChange = useCallback((changes: NodeChange<Node<CyberNodeData>>[]) => {
@@ -546,7 +539,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     const anchorNode = nodes.find((node) => node.id === session.anchorId)
     const zoom = reactFlowInstance?.getZoom() ?? 1
     const snapThreshold = 8 / zoom
-    let snapDelta: XYPosition | null = null
+    let snapDelta: XYPosition = { x: 0, y: 0 }
 
     if (anchorChange?.position && anchorNode && reactFlowInstance) {
       const anchorWidth = anchorNode.measured?.width ?? anchorNode.width ?? 0
@@ -556,54 +549,34 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
         y: anchorChange.position.y + anchorHeight / 2,
       }
       const others = nodes.filter((node) => !session.nodeIds.includes(node.id))
-      let best: { axis: "x" | "y"; delta: number; distance: number } | null = null
+      let bestX: { delta: number; distance: number } | null = null
+      let bestY: { delta: number; distance: number } | null = null
+      const guides: Array<{ axis: "vertical" | "horizontal"; coordinate: number }> = []
       for (const other of others) {
         const width = other.measured?.width ?? other.width ?? anchorWidth
         const height = other.measured?.height ?? other.height ?? anchorHeight
         const xDelta = other.position.x + width / 2 - anchorCenter.x
         const yDelta = other.position.y + height / 2 - anchorCenter.y
-        if (Math.abs(xDelta) <= snapThreshold && (!best || Math.abs(xDelta) < best.distance)) best = { axis: "x", delta: xDelta, distance: Math.abs(xDelta) }
-        if (Math.abs(yDelta) <= snapThreshold && (!best || Math.abs(yDelta) < best.distance)) best = { axis: "y", delta: yDelta, distance: Math.abs(yDelta) }
+        if (Math.abs(xDelta) <= snapThreshold) {
+          guides.push({ axis: "vertical", coordinate: other.position.x + width / 2 })
+          if (!bestX || Math.abs(xDelta) < bestX.distance) bestX = { delta: xDelta, distance: Math.abs(xDelta) }
+        }
+        if (Math.abs(yDelta) <= snapThreshold) {
+          guides.push({ axis: "horizontal", coordinate: other.position.y + height / 2 })
+          if (!bestY || Math.abs(yDelta) < bestY.distance) bestY = { delta: yDelta, distance: Math.abs(yDelta) }
+        }
       }
-      if (best && (!isShiftHeld || !session.axis || (session.axis === "x" && best.axis === "x") || (session.axis === "y" && best.axis === "y"))) {
-        snapDelta = best.axis === "x" ? { x: best.delta, y: 0 } : { x: 0, y: best.delta }
-        setAlignmentGuide({ axis: best.axis === "x" ? "vertical" : "horizontal", coordinate: best.axis === "x" ? anchorCenter.x + best.delta : anchorCenter.y + best.delta })
-      }
+      snapDelta = { x: bestX?.delta ?? 0, y: bestY?.delta ?? 0 }
+      setAlignmentGuides(guides.filter((guide, index, all) =>
+        all.findIndex((item) => item.axis === guide.axis && Math.abs(item.coordinate - guide.coordinate) < 0.5) === index
+      ))
     }
 
-    if (!isShiftHeld) {
-      onNodesChange(snapDelta ? changes.map((change) => {
-        if (change.type !== "position" || !change.position) return change
-        return { ...change, position: { x: change.position.x + snapDelta!.x, y: change.position.y + snapDelta!.y } }
-      }) : changes)
-      return
-    }
-
-    if (anchorChange?.type === "position" && anchorChange.position) {
-      const deltaX = anchorChange.position.x - session.anchorStart.x
-      const deltaY = anchorChange.position.y - session.anchorStart.y
-      if (!session.axis && (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2)) {
-        session.axis = Math.abs(deltaX) >= Math.abs(deltaY) ? "x" : "y"
-      }
-    }
-
-    const constrained = changes.map((change) => {
+    onNodesChange(snapDelta.x || snapDelta.y ? changes.map((change) => {
       if (change.type !== "position" || !change.position) return change
-      const start = session.startPositions[change.id]
-      const position = {
-        x: change.position.x + (snapDelta?.x ?? 0),
-        y: change.position.y + (snapDelta?.y ?? 0),
-      }
-      if (!start || !session.axis) return { ...change, position }
-      return {
-        ...change,
-        position: session.axis === "x"
-          ? { x: position.x, y: start.y }
-          : { x: start.x, y: position.y },
-      }
-    })
-    onNodesChange(constrained)
-  }, [isShiftHeld, onNodesChange])
+      return { ...change, position: { x: change.position.x + snapDelta.x, y: change.position.y + snapDelta.y } }
+    }) : changes)
+  }, [onNodesChange, nodes, reactFlowInstance])
 
   const onPaneClick = useCallback(() => {
     if (!isDrawingSelectBox) {
@@ -1003,7 +976,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       onDrop={handleCanvasDrop}
       style={{ cursor: isShiftHeld ? 'crosshair' : 'grab' }}
     >
-      {alignmentGuide && reactFlowInstance && (() => {
+      {alignmentGuides.length > 0 && reactFlowInstance && alignmentGuides.map((alignmentGuide, index) => {
         const guide = reactFlowInstance.flowToScreenPosition(
           alignmentGuide.axis === "vertical"
             ? { x: alignmentGuide.coordinate, y: 0 }
@@ -1011,13 +984,14 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
         )
         return (
           <div
+            key={`${alignmentGuide.axis}-${alignmentGuide.coordinate}-${index}`}
             className="pointer-events-none absolute z-40 border-primary/60"
             style={alignmentGuide.axis === "vertical"
               ? { left: guide.x, top: 0, bottom: 0, borderLeftWidth: 1, borderLeftStyle: "dashed" }
               : { top: guide.y, left: 0, right: 0, borderTopWidth: 1, borderTopStyle: "dashed" }}
           />
         )
-      })()}
+      })}
 
       {fileDragState !== "idle" && (
         <div className="pointer-events-none absolute inset-4 z-[60] flex items-center justify-center rounded-xl border-2 border-dashed bg-background/70 backdrop-blur-sm">
@@ -1063,7 +1037,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠉⣷⠀⠀⢸⡄⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡄⠀⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡸⣞⡇⠀⠀⠀⣼⡿⠀⠀⠀⠀⠉⠉⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣧⢿⣽⡀⠀⠉⠛⠁⠀⣰⣾⠿⠿⣦⡀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣧⢿⣽⡀⠀⠉⠛⠁⠀⣰⣾⠿⠿⣦⡀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣞⡿⣞⡅⠀⠀⠀⠀⠘⠏⠓⠒⠒⠀⠀⠀⠀⠀��
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣟⢾⣽⢫⡿⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⢤⣶⡻⣞⣿⣺⢯⣽⣳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀

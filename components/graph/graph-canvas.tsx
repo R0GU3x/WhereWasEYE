@@ -81,13 +81,10 @@ export function GraphCanvas() {
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
   const connectionStartNodeId = useRef<string | null>(null)
   const nodeDragSession = useRef<{
-    nodeIds: string[]
-    startPositions: Record<string, XYPosition>
-    anchorId: string
-    anchorStart: XYPosition
-    pointerOffset: XYPosition
-    axis: "x" | "y" | null
-    shiftState: boolean
+  nodeIds: string[]
+  anchorId: string
+
+
   } | null>(null)
   const [alignmentGuide, setAlignmentGuide] = useState<{
     axis: "vertical" | "horizontal"
@@ -490,22 +487,15 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     []
   )
 
-  const onNodeDragStart = useCallback((event: React.MouseEvent, node: Node<CyberNodeData>) => {
+  const onNodeDragStart = useCallback((_event: React.MouseEvent, node: Node<CyberNodeData>) => {
     const nodeIds = selectedNodes.has(node.id) ? Array.from(selectedNodes) : [node.id]
-    const draggedNodes = nodes.filter((item) => nodeIds.includes(item.id))
-    const pointer = reactFlowInstance?.screenToFlowPosition({ x: event.clientX, y: event.clientY }) ?? node.position
     nodeDragSession.current = {
       nodeIds,
-      startPositions: Object.fromEntries(draggedNodes.map((item) => [item.id, { ...item.position }])),
       anchorId: node.id,
-      anchorStart: { ...node.position },
-      pointerOffset: { x: pointer.x - node.position.x, y: pointer.y - node.position.y },
-      axis: null,
-      shiftState: event.shiftKey,
     }
     isNodeDragging.current = true
     setAlignmentGuide(null)
-  }, [nodes, selectedNodes, reactFlowInstance])
+  }, [selectedNodes])
 
   const onNodeDrag = useCallback((_event: React.MouseEvent, node: Node<CyberNodeData>) => {
     // React Flow owns the authoritative drag position. This callback only derives
@@ -565,45 +555,17 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
         if (Math.abs(xDelta) <= snapThreshold && (!best || Math.abs(xDelta) < best.distance)) best = { axis: "x", delta: xDelta, distance: Math.abs(xDelta) }
         if (Math.abs(yDelta) <= snapThreshold && (!best || Math.abs(yDelta) < best.distance)) best = { axis: "y", delta: yDelta, distance: Math.abs(yDelta) }
       }
-      if (best && (!isShiftHeld || !session.axis || (session.axis === "x" && best.axis === "x") || (session.axis === "y" && best.axis === "y"))) {
+      if (best) {
         snapDelta = best.axis === "x" ? { x: best.delta, y: 0 } : { x: 0, y: best.delta }
         setAlignmentGuide({ axis: best.axis === "x" ? "vertical" : "horizontal", coordinate: best.axis === "x" ? anchorCenter.x + best.delta : anchorCenter.y + best.delta })
       }
     }
 
-    if (!isShiftHeld) {
-      onNodesChange(snapDelta ? changes.map((change) => {
-        if (change.type !== "position" || !change.position) return change
-        return { ...change, position: { x: change.position.x + snapDelta!.x, y: change.position.y + snapDelta!.y } }
-      }) : changes)
-      return
-    }
-
-    if (anchorChange?.type === "position" && anchorChange.position) {
-      const deltaX = anchorChange.position.x - session.anchorStart.x
-      const deltaY = anchorChange.position.y - session.anchorStart.y
-      if (!session.axis && (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2)) {
-        session.axis = Math.abs(deltaX) >= Math.abs(deltaY) ? "x" : "y"
-      }
-    }
-
-    const constrained = changes.map((change) => {
+    onNodesChange(snapDelta ? changes.map((change) => {
       if (change.type !== "position" || !change.position) return change
-      const start = session.startPositions[change.id]
-      const position = {
-        x: change.position.x + (snapDelta?.x ?? 0),
-        y: change.position.y + (snapDelta?.y ?? 0),
-      }
-      if (!start || !session.axis) return { ...change, position }
-      return {
-        ...change,
-        position: session.axis === "x"
-          ? { x: position.x, y: start.y }
-          : { x: start.x, y: position.y },
-      }
-    })
-    onNodesChange(constrained)
-  }, [isShiftHeld, onNodesChange])
+      return { ...change, position: { x: change.position.x + snapDelta!.x, y: change.position.y + snapDelta!.y } }
+    }) : changes)
+  }, [onNodesChange, nodes, reactFlowInstance])
 
   const onPaneClick = useCallback(() => {
     if (!isDrawingSelectBox) {
@@ -1063,7 +1025,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠉⣷⠀⠀⢸⡄⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡄⠀⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡸⣞⡇⠀⠀⠀⣼⡿⠀⠀⠀⠀⠉⠉⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣧⢿⣽⡀⠀⠉⠛⠁⠀⣰⣾⠿⠿⣦⡀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣧⢿⣽⡀⠀⠉⠛⠁⠀⣰⣾⠿⠿⣦⡀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣞⡿⣞⡅⠀⠀⠀⠀⠘⠏⠓⠒⠒⠀⠀⠀⠀⠀��
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣟⢾⣽⢫⡿⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⢤⣶⡻⣞⣿⣺⢯⣽⣳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀

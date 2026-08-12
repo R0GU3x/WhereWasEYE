@@ -233,9 +233,9 @@ export function GraphCanvas() {
       const newEdge = {
         ...normalizedConnection,
         type: useTidyEdges ? "smoothstep" : "crossing",
-data: { useSmoothStep: useTidyEdges, routePoints: [] },
-  }
-  setEdges((eds) => addEdge(newEdge, eds))
+        data: { useSmoothStep: useTidyEdges, routePoints: [] },
+      }
+      setEdges((eds) => addEdge(newEdge, eds))
       connectionStartNodeId.current = null
       playSound("edgeConnect")
     },
@@ -303,17 +303,17 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       playSound("nodeCreate")
 
       if (parentId) {
-          const newEdge: Edge = {
-            id: `edge-${parentId}-${newNode.id}`,
-            source: parentId,
-            target: newNode.id,
-            sourceHandle: "bottom-source",
-            targetHandle: "top-target",
-            ...defaultEdgeOptions,
-            type: useTidyEdges ? "smoothstep" : "crossing",
-            data: { useSmoothStep: useTidyEdges, routePoints: [] },
-          }
-          setEdges((eds) => [...eds, newEdge])
+        const newEdge: Edge = {
+          id: `edge-${parentId}-${newNode.id}`,
+          source: parentId,
+          target: newNode.id,
+          sourceHandle: "bottom-source",
+          targetHandle: "top-target",
+          ...defaultEdgeOptions,
+          type: useTidyEdges ? "smoothstep" : "crossing",
+          data: { useSmoothStep: useTidyEdges, routePoints: [] },
+        }
+        setEdges((eds) => [...eds, newEdge])
       }
     },
     [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges, useTidyEdges, playSound]
@@ -1184,8 +1184,8 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
         {/* Help Popup */}
         <div
           className={`absolute bottom-14 left-0 w-72 origin-bottom-left rounded-lg border border-border bg-card/95 p-4 backdrop-blur-md transition-all duration-300 ease-out ${showHelp
-              ? "scale-100 opacity-100 translate-y-0"
-              : "scale-95 opacity-0 translate-y-2 pointer-events-none"
+            ? "scale-100 opacity-100 translate-y-0"
+            : "scale-95 opacity-0 translate-y-2 pointer-events-none"
             }`}
         >
           {/* Header Row */}

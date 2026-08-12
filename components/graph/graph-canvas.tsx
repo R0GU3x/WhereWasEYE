@@ -22,6 +22,7 @@ import {
 import "@xyflow/react/dist/style.css"
 
 import { CyberNode, type CyberNodeData, type NodeStatus } from "./cyber-node"
+import { FrameNode, type FrameNodeData } from "./frame-node"
 import { ContextMenu } from "./context-menu"
 import { DetailPanel } from "./detail-panel"
 import { CrossingEdge } from "./crossing-edge"
@@ -32,8 +33,13 @@ import { cn } from "@/lib/utils"
 
 const APP_VERSION = "v4.7.3"
 
+type GraphNodeData = CyberNodeData | FrameNodeData
+
+type GraphNode = Node<GraphNodeData>
+
 const nodeTypes = {
   cyber: CyberNode,
+  frame: FrameNode,
 }
 
 const edgeTypes = {
@@ -58,15 +64,18 @@ interface ContextMenuState {
 }
 
 export function GraphCanvas() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<CyberNodeData>>([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<GraphNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
-  const [selectedNode, setSelectedNode] = useState<Node<CyberNodeData> | null>(null)
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set())
   const [showHelp, setShowHelp] = useState(false)
   const helpContainerRef = useRef<HTMLDivElement>(null)
   const [minimapExpanded, setMinimapExpanded] = useState(true)
   const [isShiftHeld, setIsShiftHeld] = useState(false)
+  const [isFrameMode, setIsFrameMode] = useState(false)
+  const [frameDraft, setFrameDraft] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
+  const frameStartRef = useRef<XYPosition | null>(null)
   const [isDrawingSelectBox, setIsDrawingSelectBox] = useState(false)
   const [selectStart, setSelectStart] = useState<{ x: number; y: number } | null>(null)
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
@@ -92,7 +101,7 @@ export function GraphCanvas() {
   }>>([])
   const initialFitViewComplete = useRef(false)
   const restoredGraphRef = useRef(false)
-  const historyRef = useRef<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
+  const historyRef = useRef<Array<{ nodes: GraphNode[]; edges: Edge[] }>>([])
   const historyIndexRef = useRef(-1)
   const historyReadyRef = useRef(false)
   const restoringHistoryRef = useRef(false)
@@ -110,7 +119,7 @@ export function GraphCanvas() {
         const { nodes: savedNodes, edges: savedEdges, useTidyEdges: savedTidyEdges } = JSON.parse(savedData)
 
         // Update nodes with correct status type (handle legacy data)
-        const updatedNodes = (savedNodes || []).map((node: Node<CyberNodeData>) => ({
+        const updatedNodes = (savedNodes || []).map((node: GraphNode) => ({
           ...node,
           data: {
             ...node.data,
@@ -155,6 +164,28 @@ export function GraphCanvas() {
   }, [nodes])
 
   useEffect(() => {
+    const frames = nodes.filter((node) => node.type === "frame")
+    if (frames.length === 0) return
+    let changed = false
+    const nextNodes = nodes.map((node) => {
+      if (node.type !== "frame") return node
+      const frame = node.data as FrameNodeData
+      const memberIds = nodes.filter((candidate) => {
+        if (candidate.type === "frame" || candidate.id === node.id) return false
+        const width = candidate.measured?.width ?? candidate.width ?? 140
+        const height = candidate.measured?.height ?? candidate.height ?? 60
+        return candidate.position.x >= node.position.x && candidate.position.y >= node.position.y && candidate.position.x + width <= node.position.x + frame.frameWidth && candidate.position.y + height <= node.position.y + frame.frameHeight
+      }).map((candidate) => candidate.id)
+      if (JSON.stringify(memberIds) !== JSON.stringify(frame.memberIds)) {
+        changed = true
+        return { ...node, data: { ...frame, memberIds } }
+      }
+      return node
+    })
+    if (changed) setNodes(nextNodes)
+  }, [nodes, setNodes])
+
+  useEffect(() => {
     if (initialFitViewComplete.current || !restoredGraphRef.current || !reactFlowInstance || nodes.length === 0) return
 
     const frame = requestAnimationFrame(() => {
@@ -166,7 +197,7 @@ export function GraphCanvas() {
     return () => cancelAnimationFrame(frame)
   }, [reactFlowInstance, nodes.length])
 
-  const pushHistory = useCallback((nextNodes: Node<CyberNodeData>[], nextEdges: Edge[]) => {
+  const pushHistory = useCallback((nextNodes: GraphNode[], nextEdges: Edge[]) => {
     if (restoringHistoryRef.current) return
     const snapshot = { nodes: structuredClone(nextNodes), edges: structuredClone(nextEdges) }
     const current = historyRef.current[historyIndexRef.current]
@@ -261,7 +292,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
   )
 
   const createNode = useCallback(
-    (position: { x: number; y: number }): Node<CyberNodeData> => {
+    (position: { x: number; y: number }): GraphNode => {
       const id = `node-${Date.now()}`
       return {
         id,
@@ -494,7 +525,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
         setSelectedNode(null)
       } else {
         // Normal click - open detail panel
-        setSelectedNode(node as Node<CyberNodeData>)
+        setSelectedNode(node as GraphNode)
         setSelectedNodes(new Set())
       }
     },
@@ -504,12 +535,12 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
   const onNodeDoubleClick: NodeMouseHandler = useCallback(
     (event, node) => {
       event.stopPropagation()
-      setSelectedNode(node as Node<CyberNodeData>)
+      setSelectedNode(node as GraphNode)
     },
     []
   )
 
-  const onNodeDragStart = useCallback((_event: React.MouseEvent, node: Node<CyberNodeData>) => {
+  const onNodeDragStart = useCallback((_event: React.MouseEvent, node: GraphNode) => {
     const nodeIds = selectedNodes.has(node.id) ? Array.from(selectedNodes) : [node.id]
     nodeDragSession.current = {
       nodeIds,
@@ -520,7 +551,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     setAlignmentGuides([])
   }, [selectedNodes])
 
-  const onNodeDrag = useCallback((_event: React.MouseEvent, node: Node<CyberNodeData>) => {
+  const onNodeDrag = useCallback((_event: React.MouseEvent, node: GraphNode) => {
     // React Flow owns the authoritative drag position. This callback only derives
     // alignment feedback; it never writes node positions, preventing release drift.
     const session = nodeDragSession.current
@@ -551,9 +582,9 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     setAlignmentGuides([])
   }, [])
 
-  const handleNodesChange = useCallback((changes: NodeChange<Node<CyberNodeData>>[]) => {
+  const handleNodesChange = useCallback((changes: NodeChange<GraphNode>[]) => {
     const dimensionChanges = changes.filter(
-      (change): change is Extract<NodeChange<Node<CyberNodeData>>, { type: "dimensions" }> => change.type === "dimensions" && Boolean(change.dimensions)
+      (change): change is Extract<NodeChange<GraphNode>, { type: "dimensions" }> => change.type === "dimensions" && Boolean(change.dimensions)
     )
     const positionCorrection = new Map<string, number>()
 
@@ -586,7 +617,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       return
     }
 
-    const positionChanges = changes.filter((change): change is Extract<NodeChange<Node<CyberNodeData>>, { type: "position" }> => change.type === "position" && Boolean(change.position))
+    const positionChanges = changes.filter((change): change is Extract<NodeChange<GraphNode>, { type: "position" }> => change.type === "position" && Boolean(change.position))
     const anchorChange = positionChanges.find((change) => change.id === session.anchorId)
     const anchorNode = nodes.find((node) => node.id === session.anchorId)
     const zoom = reactFlowInstance?.getZoom() ?? 1
@@ -648,8 +679,36 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     setContextMenu(null)
   }, [isDrawingSelectBox, isShiftHeld])
 
-  // Handle pane mouse down for Shift + drag selection box
+  const createFrame = useCallback((bounds: { x: number; y: number; width: number; height: number }) => {
+    if (bounds.width < 40 || bounds.height < 40) return
+    const frameId = `frame-${Date.now()}`
+    const memberIds = nodes.filter((node) => {
+      if (node.type === "frame") return false
+      const width = node.measured?.width ?? node.width ?? 140
+      const height = node.measured?.height ?? node.height ?? 60
+      return node.position.x >= bounds.x && node.position.y >= bounds.y && node.position.x + width <= bounds.x + bounds.width && node.position.y + height <= bounds.y + bounds.height
+    }).map((node) => node.id)
+    const frame: GraphNode = {
+      id: frameId,
+      type: "frame",
+      position: { x: bounds.x, y: bounds.y },
+      zIndex: -1,
+      selectable: true,
+      data: { label: "Frame", frameWidth: bounds.width, frameHeight: bounds.height, memberIds },
+    }
+    setNodes((current) => [...current, frame])
+    playSound("nodeCreate")
+  }, [nodes, playSound, setNodes])
+
   const handlePaneMouseDown = useCallback((e: React.MouseEvent) => {
+    if (isFrameMode && e.button === 0 && !(e.target as HTMLElement).closest(".react-flow__node")) {
+      const start = reactFlowInstance?.screenToFlowPosition({ x: e.clientX, y: e.clientY })
+      if (start) {
+        frameStartRef.current = start
+        setFrameDraft({ x: start.x, y: start.y, width: 0, height: 0 })
+      }
+      return
+    }
     if (!isShiftHeld || e.button !== 0) return
     if ((e.target as HTMLElement).closest('.react-flow__node')) return
 
@@ -662,6 +721,12 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
 
   // Handle pane mouse move for selection box
   const handlePaneMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isFrameMode && frameStartRef.current && reactFlowInstance) {
+      const current = reactFlowInstance.screenToFlowPosition({ x: e.clientX, y: e.clientY })
+      const start = frameStartRef.current
+      setFrameDraft({ x: Math.min(start.x, current.x), y: Math.min(start.y, current.y), width: Math.abs(current.x - start.x), height: Math.abs(current.y - start.y) })
+      return
+    }
     if (!isDrawingSelectBox || !selectStart) return
 
     const rect = reactFlowWrapper.current?.getBoundingClientRect()
@@ -682,6 +747,13 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
 
   // Handle pane mouse up to finalize selection
   const handlePaneMouseUp = useCallback(() => {
+    if (isFrameMode && frameStartRef.current) {
+      if (frameDraft) createFrame(frameDraft)
+      frameStartRef.current = null
+      setFrameDraft(null)
+      setIsFrameMode(false)
+      return
+    }
     if (!isDrawingSelectBox || !selectBox || !reactFlowInstance) {
       setIsDrawingSelectBox(false)
       setSelectBox(null)
@@ -759,7 +831,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     setIsDrawingSelectBox(false)
     setSelectBox(null)
     setSelectStart(null)
-  }, [isDrawingSelectBox, selectBox, nodes, reactFlowInstance, selectedNodes, setNodes])
+  }, [isFrameMode, frameDraft, createFrame, isDrawingSelectBox, selectBox, nodes, reactFlowInstance, selectedNodes, setNodes])
 
   // Custom scroll and zoom handler
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -809,6 +881,11 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       // Track shift key
       if (e.key === "Shift") {
         setIsShiftHeld(true)
+      }
+
+      if (e.key.toLowerCase() === "r" && !isInput && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault()
+        setIsFrameMode((active) => !active)
       }
 
       // Delete/Backspace for selected nodes
@@ -897,7 +974,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
           throw new Error("Invalid graph structure")
         }
 
-        const updatedNodes = data.nodes.map((node: Node<CyberNodeData>) => ({
+        const updatedNodes = data.nodes.map((node: GraphNode) => ({
           ...node,
           data: {
             ...node.data,
@@ -1034,8 +1111,19 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       onDragOver={handleCanvasDragOver}
       onDragLeave={handleCanvasDragLeave}
       onDrop={handleCanvasDrop}
-      style={{ cursor: isShiftHeld ? 'crosshair' : 'grab' }}
+      style={{ cursor: isFrameMode ? 'crosshair' : isShiftHeld ? 'crosshair' : 'grab' }}
     >
+      {frameDraft && reactFlowInstance && (
+        <div
+          className="pointer-events-none absolute z-30 rounded-xl border border-dashed border-primary/70 bg-primary/10"
+          style={{
+            left: reactFlowInstance.flowToScreenPosition({ x: frameDraft.x, y: frameDraft.y }).x - reactFlowWrapper.current!.getBoundingClientRect().left,
+            top: reactFlowInstance.flowToScreenPosition({ x: frameDraft.x, y: frameDraft.y }).y - reactFlowWrapper.current!.getBoundingClientRect().top,
+            width: frameDraft.width * reactFlowInstance.getZoom(),
+            height: frameDraft.height * reactFlowInstance.getZoom(),
+          }}
+        />
+      )}
       {alignmentGuides.length > 0 && reactFlowInstance && alignmentGuides.map((alignmentGuide, index) => {
         const guide = reactFlowInstance.flowToScreenPosition(
           alignmentGuide.axis === "vertical"
@@ -1242,6 +1330,10 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span><strong>Press R + Drag</strong> to create a frame</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
               <span><strong>Hold Shift + Drag</strong> to draw selection box</span>
             </li>
             <li className="flex items-start gap-2">
@@ -1382,8 +1474,12 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
                     </svg>
 
                     {nodes.map((node) => {
-                      const data = node.data as CyberNodeData
                       const pos = nodePositions.get(node.id)!
+                      if (node.type === "frame") {
+                        const frame = node.data as FrameNodeData
+                        return <div key={node.id} className="absolute rounded border border-primary/50 bg-primary/10" style={{ left: `${pos.left}%`, top: `${pos.top}%`, width: `${Math.max(8, (frame.frameWidth / rangeX) * 100)}%`, height: `${Math.max(8, (frame.frameHeight / rangeY) * 100)}%`, transform: "translate(-5%, -5%)" }} />
+                      }
+                      const data = node.data as CyberNodeData
 
                       const statusColorMap: Record<NodeStatus, string> = {
                         "default": "var(--node-default)",
@@ -1497,9 +1593,9 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       )}
 
       {/* Detail Panel */}
-      {selectedNode && (
+      {selectedNode && selectedNode.type !== "frame" && (
         <DetailPanel
-          node={selectedNode}
+          node={selectedNode as Node<CyberNodeData>}
           onClose={() => setSelectedNode(null)}
           onUpdateNode={handleUpdateNode}
           onDeleteNode={handleDeleteNode}

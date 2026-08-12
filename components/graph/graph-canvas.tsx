@@ -98,6 +98,7 @@ export function GraphCanvas() {
   const [, setHistoryVersion] = useState(0)
   const isNodeDragging = useRef(false)
   const snapActiveRef = useRef(false)
+  const nodeWidthRef = useRef(new Map<string, number>())
   const { soundEnabled, toggleSound, playSound } = useSound()
 
   // Load from localStorage on mount
@@ -144,6 +145,13 @@ export function GraphCanvas() {
 
   // Fit once after the browser page initializes and restored nodes are available.
   // The ref prevents graph edits from ever re-triggering this automatic viewport change.
+  useEffect(() => {
+    for (const node of nodes) {
+      const width = node.measured?.width ?? node.width
+      if (width) nodeWidthRef.current.set(node.id, width)
+    }
+  }, [nodes])
+
   useEffect(() => {
     if (initialFitViewComplete.current || !reactFlowInstance || nodes.length === 0) return
 
@@ -539,8 +547,10 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     for (const change of dimensionChanges) {
       const node = nodes.find((item) => item.id === change.id)
       if (!node || !change.dimensions?.width) continue
-      const oldWidth = node.measured?.width ?? node.width ?? change.dimensions.width
-      positionCorrection.set(change.id, (oldWidth - change.dimensions.width) / 2)
+      const newWidth = change.dimensions.width
+      const oldWidth = nodeWidthRef.current.get(change.id) ?? node.width ?? node.measured?.width ?? newWidth
+      nodeWidthRef.current.set(change.id, newWidth)
+      positionCorrection.set(change.id, (oldWidth - newWidth) / 2)
     }
 
     const correctedChanges = changes.map((change) => {
@@ -559,7 +569,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
 
     const session = nodeDragSession.current
     if (!session) {
-      onNodesChange(correctedChanges)
+      onNodesChange([...correctedChanges, ...syntheticPositionChanges])
       return
     }
 

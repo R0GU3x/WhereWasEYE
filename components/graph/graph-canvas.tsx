@@ -74,6 +74,7 @@ export function GraphCanvas() {
   const [minimapExpanded, setMinimapExpanded] = useState(true)
   const [isShiftHeld, setIsShiftHeld] = useState(false)
   const [isFrameMode, setIsFrameMode] = useState(false)
+  const [editingFrameId, setEditingFrameId] = useState<string | null>(null)
   const [frameDraft, setFrameDraft] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const frameStartRef = useRef<XYPosition | null>(null)
   const frameDraftRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
@@ -537,6 +538,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     (event, node) => {
       event.stopPropagation()
       setSelectedNode(node as GraphNode)
+      if (node.type === "frame") setEditingFrameId(node.id)
     },
     []
   )
@@ -679,6 +681,11 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     }
     setContextMenu(null)
   }, [isDrawingSelectBox, isShiftHeld])
+
+  const updateFrameLabel = useCallback((frameId: string, label: string) => {
+    setNodes((current) => current.map((node) => node.id === frameId ? { ...node, data: { ...node.data, label: label.trim() || "Frame" } } : node))
+    setEditingFrameId(null)
+  }, [setNodes])
 
   const createFrame = useCallback((bounds: { x: number; y: number; width: number; height: number }) => {
     if (bounds.width < 40 || bounds.height < 40) return
@@ -1130,7 +1137,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
   return (
     <div
       ref={reactFlowWrapper}
-      className="relative h-screen w-screen"
+      className={cn("relative h-screen w-screen", isFrameMode ? "cursor-crosshair" : isShiftHeld ? "cursor-crosshair" : "cursor-grab")}
       onMouseDown={handlePaneMouseDown}
       onMouseMove={handlePaneMouseMove}
       onMouseUp={handlePaneMouseUp}
@@ -1139,7 +1146,6 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       onDragOver={handleCanvasDragOver}
       onDragLeave={handleCanvasDragLeave}
       onDrop={handleCanvasDrop}
-      style={{ cursor: isFrameMode ? 'crosshair' : isShiftHeld ? 'crosshair' : 'grab' }}
     >
       {frameDraft && reactFlowInstance && (
         <div
@@ -1218,7 +1224,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣟⢾⣽⢫⡿⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⢤⣶⡻⣞⣿⣺⢯⣽⣳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⢠⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣤⣿⣽⣻⢾⣽⣷⣾⣽⣻⣞⣷⣳⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣶⣄⡀⠀⠀⠀⣀⣲⣴⢶⣞⡿⣽⣞⡷⣯⢿⡽⣞⣿⠟⠋⠁⠉⠈⠳⣟⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣶⣄⡀⠀⠀⠀⣀⣲⣴⢶⣞⡿⣽⣞⡷⣯⢿⡽⣞⣿⠟⠋⠁⠉⠈⠳⣟⣆⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀���⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⢶⣾⣿⡽⣯⣟⡾⣽⡷⣯⣟⡽⡾⣽⡯⠁⠀⠀⠀⠀⠀⠀⢮⣭⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⢞⣿⣿⢯⡿⣿⣯⣟⣷⣯⢿⣳⣟⡷⣽⣼⣻⣽⠀⠀⠀⠀⠀⠀⠀⢀⣼⡯⡗⠋⠤⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⣿⣿⣯⣽⣾⣿⣾⣗⡿⣯⡷⣯⣟⡷⣞⣼⣿⣀⠀⠀⠀⠀⢀⣠⡿⣏⡗⠈⠐⠈⠅⠀⠀⠀⠀⠀⠀⠀
@@ -1619,6 +1625,31 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
           onClearCanvas={handleClearCanvasRequest}
         />
       )}
+
+      {selectedNode?.type === "frame" && (() => {
+        const frame = selectedNode.data as FrameNodeData
+        return (
+          <div className="absolute right-4 top-20 z-30 w-64 rounded-lg border border-primary/30 bg-card/95 p-3 shadow-xl backdrop-blur-sm">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary/70">Frame label</span>
+              <button type="button" onClick={() => setSelectedNode(null)} className="text-muted-foreground hover:text-foreground" aria-label="Close frame panel"><X size={14} /></button>
+            </div>
+            <input
+              autoFocus={editingFrameId === selectedNode.id}
+              value={frame.label}
+              onChange={(event) => setNodes((current) => current.map((node) => node.id === selectedNode.id ? { ...node, data: { ...node.data, label: event.target.value } } : node))}
+              onBlur={(event) => updateFrameLabel(selectedNode.id, event.target.value)}
+              onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing || event.keyCode === 229) return
+                if (event.key === "Enter") updateFrameLabel(selectedNode.id, event.currentTarget.value)
+                if (event.key === "Escape") setEditingFrameId(null)
+              }}
+              className="w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary"
+              aria-label="Frame label"
+            />
+          </div>
+        )
+      })()}
 
       {/* Detail Panel */}
       {selectedNode && selectedNode.type !== "frame" && (

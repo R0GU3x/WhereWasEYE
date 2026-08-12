@@ -76,6 +76,7 @@ export function GraphCanvas() {
   const [isFrameMode, setIsFrameMode] = useState(false)
   const [frameDraft, setFrameDraft] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const frameStartRef = useRef<XYPosition | null>(null)
+  const frameDraftRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
   const [isDrawingSelectBox, setIsDrawingSelectBox] = useState(false)
   const [selectStart, setSelectStart] = useState<{ x: number; y: number } | null>(null)
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
@@ -700,15 +701,55 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     playSound("nodeCreate")
   }, [nodes, playSound, setNodes])
 
-  const handlePaneMouseDown = useCallback((e: React.MouseEvent) => {
-    if (isFrameMode && e.button === 0 && !(e.target as HTMLElement).closest(".react-flow__node")) {
-      const start = reactFlowInstance?.screenToFlowPosition({ x: e.clientX, y: e.clientY })
-      if (start) {
-        frameStartRef.current = start
-        setFrameDraft({ x: start.x, y: start.y, width: 0, height: 0 })
-      }
-      return
+  useEffect(() => {
+    if (!isFrameMode || !reactFlowInstance) return
+
+    let drawing = false
+    let start: XYPosition | null = null
+
+    const onPointerDown = (event: PointerEvent) => {
+      const wrapper = reactFlowWrapper.current
+      const target = event.target as HTMLElement
+      if (!wrapper || !wrapper.contains(target) || target.closest(".react-flow__node")) return
+      event.preventDefault()
+      const nextStart = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      start = nextStart
+      drawing = true
+      frameStartRef.current = nextStart
+      setFrameDraft({ x: nextStart.x, y: nextStart.y, width: 0, height: 0 })
     }
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (!drawing || !start) return
+      const current = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      const draft = { x: Math.min(start.x, current.x), y: Math.min(start.y, current.y), width: Math.abs(current.x - start.x), height: Math.abs(current.y - start.y) }
+      frameDraftRef.current = draft
+      setFrameDraft(draft)
+    }
+
+    const onPointerUp = () => {
+      if (!drawing || !start) return
+      const current = frameDraftRef.current
+      if (current) createFrame(current)
+      drawing = false
+      start = null
+      frameStartRef.current = null
+      frameDraftRef.current = null
+      setFrameDraft(null)
+      setIsFrameMode(false)
+    }
+
+    document.addEventListener("pointerdown", onPointerDown)
+    document.addEventListener("pointermove", onPointerMove)
+    document.addEventListener("pointerup", onPointerUp)
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown)
+      document.removeEventListener("pointermove", onPointerMove)
+      document.removeEventListener("pointerup", onPointerUp)
+    }
+  }, [createFrame, isFrameMode, reactFlowInstance])
+
+  const handlePaneMouseDown = useCallback((e: React.MouseEvent) => {
     if (!isShiftHeld || e.button !== 0) return
     if ((e.target as HTMLElement).closest('.react-flow__node')) return
 
@@ -721,12 +762,6 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
 
   // Handle pane mouse move for selection box
   const handlePaneMouseMove = useCallback((e: React.MouseEvent) => {
-    if (isFrameMode && frameStartRef.current && reactFlowInstance) {
-      const current = reactFlowInstance.screenToFlowPosition({ x: e.clientX, y: e.clientY })
-      const start = frameStartRef.current
-      setFrameDraft({ x: Math.min(start.x, current.x), y: Math.min(start.y, current.y), width: Math.abs(current.x - start.x), height: Math.abs(current.y - start.y) })
-      return
-    }
     if (!isDrawingSelectBox || !selectStart) return
 
     const rect = reactFlowWrapper.current?.getBoundingClientRect()
@@ -743,17 +778,10 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       width: Math.abs(width),
       height: Math.abs(height),
     })
-  }, [isDrawingSelectBox, selectStart])
+  }, [isFrameMode, isDrawingSelectBox, selectStart, reactFlowInstance])
 
   // Handle pane mouse up to finalize selection
   const handlePaneMouseUp = useCallback(() => {
-    if (isFrameMode && frameStartRef.current) {
-      if (frameDraft) createFrame(frameDraft)
-      frameStartRef.current = null
-      setFrameDraft(null)
-      setIsFrameMode(false)
-      return
-    }
     if (!isDrawingSelectBox || !selectBox || !reactFlowInstance) {
       setIsDrawingSelectBox(false)
       setSelectBox(null)
@@ -1196,8 +1224,8 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⣿⣿⣯⣽⣾⣿⣾⣗⡿⣯⡷⣯⣟⡷⣞⣼⣿⣀⠀⠀⠀⠀⢀⣠⡿⣏⡗⠈⠐⠈⠅⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⠛⠏⠉⠉⠽⢟⢿⣿⣿⣿⣿⣷⣻⢾⡽⣞⡷⠄⡹⣶⢿⣻⢿⣻⡽⢯⣼⢦⠶⠁⠈⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣯⠇⠀⠀⠀⠀⠀⠁⣽⣿⣿⣿⣷⣯⣿⣽⣛⡦⠀⠀⢩⣿⣹⢯⣷⢻⣟⠺⢣⡖⣘⠤⠓⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢈⣿⡃⠁⠀⠀⠀⢀⣤⣾⣟⢿⣻⣿⣿⣟⡾⣽⡳⠄⠎⢳⣯⢯⣟⡾⢯⣞⣯⣓⠉⢀⠀⠀⡄⢢⡀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣷⣷⣶⣳⣶⣺⣿⣿⣳⢯⣟⣿⣿⣳⢯⠛⠅⠃⠀⠀⣴⣿⡿⣬⢶⠾⠙⣊⣥⠾⡒⠊⢁⢠⠣⣌⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢈⣿⡃⠁⠀⠀⠀⢀⣤⣾⣟⢿⣻���⣿⣟⡾⣽⡳⠄⠎⢳⣯⢯⣟⡾⢯⣞⣯⣓⠉⢀⠀⠀⡄⢢⡀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣷⣷⣶⣳⣶⣺⣿⣿⣳⢯⣟⣿⣿⣳⢯⠛⠅⠃⠀⠀⣴⣿⡿⣬⢶⠾⠙⣊⣥���⡒⠊⢁⢠⠣⣌⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢺⡽⣾⡽⣯⣟⣿⡿⣯⣿⣿⣾⢿⣿⠳⢏⣈⢠⠀⠀⣰⢿⡿⣽⣉⡶⠌⠋⠉⣀⡀⠁⠀⠀⠀⣘⡐⣂⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣽⣳⣟⣳⣟⣾⣽⣿⣿⣿⣿⣿⣦⣜⡻⡽⠆⠧⣴⡟⣯⢟⡳⣭⠲⠄⠐⠀⠀⠀⠈⠁⠉⠑⢊⡕⢃⠄⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⣿⣾⣿⣯⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⣾��⠀⠹⠾⡵⡞⡽⢢⣃⠐⠀⠀⠄⡐⠀⠀⠀⡘⢦⠘⣌⠀⠀

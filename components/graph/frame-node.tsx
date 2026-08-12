@@ -13,7 +13,7 @@ export interface FrameNodeData extends Record<string, unknown> {
 
 function FrameNodeComponent({ data, selected, id }: NodeProps) {
   const frame = data as unknown as FrameNodeData
-  const onResize = useCallback((_event: unknown, params: { width: number; height: number }) => {
+  const onResizeEnd = useCallback((_event: unknown, params: { width: number; height: number }) => {
     window.dispatchEvent(new CustomEvent("wherewaseye:frame-resize", { detail: { id, width: params.width, height: params.height } }))
   }, [id])
 
@@ -23,10 +23,11 @@ function FrameNodeComponent({ data, selected, id }: NodeProps) {
         "relative rounded-xl border border-dashed border-primary/45 bg-primary/[0.035] shadow-[inset_0_0_28px_rgba(80,160,255,0.035)] before:pointer-events-none before:absolute before:inset-0 before:rounded-xl before:border before:border-primary/10 before:content-['']",
         selected && "ring-1 ring-primary/70"
       )}
-      style={{ width: frame.frameWidth, height: frame.frameHeight }}
+      style={{ width: "100%", height: "100%" }}
     >
       <NodeResizer
         isVisible={Boolean(selected)}
+        onResizeEnd={onResizeEnd}
         minWidth={160}
         minHeight={100}
         lineClassName="!border-primary/60"

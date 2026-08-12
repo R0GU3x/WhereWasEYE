@@ -1,6 +1,6 @@
 "use client"
 
-import { memo } from "react"
+import { memo, useCallback } from "react"
 import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react"
 import { cn } from "@/lib/utils"
 
@@ -11,8 +11,11 @@ export interface FrameNodeData extends Record<string, unknown> {
   memberIds: string[]
 }
 
-function FrameNodeComponent({ data, selected }: NodeProps) {
+function FrameNodeComponent({ data, selected, id }: NodeProps) {
   const frame = data as unknown as FrameNodeData
+  const onResize = useCallback((_event: unknown, params: { width: number; height: number }) => {
+    window.dispatchEvent(new CustomEvent("wherewaseye:frame-resize", { detail: { id, width: params.width, height: params.height } }))
+  }, [id])
 
   return (
     <div

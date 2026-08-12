@@ -68,8 +68,8 @@ function FrameNodeComponent({ data, selected, id }: NodeProps) {
   return (
     <div
       className={cn(
-        "relative rounded-xl border border-dashed border-primary/45 bg-primary/[0.035] shadow-[inset_0_0_28px_rgba(80,160,255,0.035)] before:pointer-events-none before:absolute before:inset-0 before:rounded-xl before:border before:border-primary/10 before:content-['']",
-        selected && "ring-1 ring-primary/70"
+        "relative rounded-xl border border-dashed border-slate-400/45 bg-slate-400/[0.025] shadow-[inset_0_0_28px_rgba(148,163,184,0.025)] before:pointer-events-none before:absolute before:inset-0 before:rounded-xl before:border before:border-slate-300/10 before:content-['']",
+        selected && "ring-1 ring-slate-300/70"
       )}
       style={{ width: frame.frameWidth, height: frame.frameHeight }}
     >
@@ -79,14 +79,14 @@ function FrameNodeComponent({ data, selected, id }: NodeProps) {
             <div
               key={direction}
               onPointerDown={(event) => startResize(event, direction)}
-              className={`pointer-events-auto absolute rounded-sm border border-primary bg-background ${resizeClasses[direction]}`}
+              className={`pointer-events-auto absolute rounded-sm border border-slate-300/80 bg-background ${resizeClasses[direction]}`}
             />
           ))}
         </div>
       )}
       <div className="pointer-events-none absolute left-4 top-3 z-10 flex items-center gap-2">
-        <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-primary/70">
+        <span className="h-1.5 w-1.5 rounded-full bg-slate-300 shadow-[0_0_8px_rgba(203,213,225,0.55)]" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-slate-300/75">
           {frame.label || "Frame"}
         </span>
       </div>

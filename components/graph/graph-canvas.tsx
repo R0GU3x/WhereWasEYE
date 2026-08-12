@@ -75,6 +75,7 @@ export function GraphCanvas() {
   const [isShiftHeld, setIsShiftHeld] = useState(false)
   const [isFrameMode, setIsFrameMode] = useState(false)
   const [editingFrameId, setEditingFrameId] = useState<string | null>(null)
+  const [frameLabelDraft, setFrameLabelDraft] = useState("")
   const [frameDraft, setFrameDraft] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const frameStartRef = useRef<XYPosition | null>(null)
   const frameDraftRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
@@ -569,7 +570,10 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     (event, node) => {
       event.stopPropagation()
       setSelectedNode(node as GraphNode)
-      if (node.type === "frame") setEditingFrameId(node.id)
+      if (node.type === "frame") {
+        setFrameLabelDraft(String((node.data as FrameNodeData).label ?? ""))
+        setEditingFrameId(node.id)
+      }
     },
     []
   )
@@ -942,7 +946,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
-      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
       // Track shift key
       if (e.key === "Shift") {
@@ -1245,7 +1249,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
             {/* ASCII Art Style Robot/Hacker */}
             <pre className="font-mono text-xs text-muted-foreground leading-none select-none">
               {`
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⢰⠂⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠉⣷⠀⠀⢸⡄⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡄⠀⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
@@ -1268,7 +1272,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⣿⣾⣿⣯⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⣾��⠀⠹⠾⡵⡞⡽⢢⣃⠐⠀⠀⠄⡐⠀⠀⠀⡘⢦⠘⣌⠀⠀
                                           ⠀�����⠀⠀⠀⠀⠀⠀⠀⠀⠐⠹⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢯⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠒⡈⠀⡀⠄⡑⠢⣉⠴⣈⣆
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢯⣏⡴⣶⣵⣢⢤⢠⡀⡄⢠⠐⡰⢌⡱⠀⡁⡀⠆⡥⠆⡥⣛⡽⣾
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠔⠉⠀⠀⢽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣼⣻⢷⣯⡽⣞⣷⣻⡼⣡⢋⡔⠣⠜⡐⢐⠠⡓⣤⣙⣲⣽⣻⢷
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠔⠉⠀⠀⢽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣼⣻⢷⣯⡽⣞⣷⣻⡼⣡⢋⡔⠣⠜⡐⢐⠠⡓⣤⣙⣲⣽���⢷
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡿⣽⣞⣷⣻⡴⣣⢜⡱⣊⡕⣊⠠⡙⡰⣭⢷⣯⣿⢿
                                                         
 
@@ -1660,20 +1664,23 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       {selectedNode?.type === "frame" && (() => {
         const frame = selectedNode.data as FrameNodeData
         return (
-          <div className="absolute right-4 top-20 z-30 w-64 rounded-lg border border-primary/30 bg-card/95 p-3 shadow-xl backdrop-blur-sm">
+          <div className="absolute right-4 top-20 z-30 w-64 rounded-lg border border-slate-400/30 bg-card/95 p-3 shadow-xl backdrop-blur-sm">
             <div className="mb-2 flex items-center justify-between">
-              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary/70">Frame label</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-300/75">Frame label</span>
               <button type="button" onClick={() => setSelectedNode(null)} className="text-muted-foreground hover:text-foreground" aria-label="Close frame panel"><X size={14} /></button>
             </div>
             <input
               autoFocus={editingFrameId === selectedNode.id}
-              value={frame.label}
-              onChange={(event) => setNodes((current) => current.map((node) => node.id === selectedNode.id ? { ...node, data: { ...node.data, label: event.target.value } } : node))}
-              onBlur={(event) => updateFrameLabel(selectedNode.id, event.target.value)}
+              value={frameLabelDraft}
+              onChange={(event) => setFrameLabelDraft(event.target.value)}
+              onBlur={() => updateFrameLabel(selectedNode.id, frameLabelDraft)}
               onKeyDown={(event) => {
                 if (event.nativeEvent.isComposing || event.keyCode === 229) return
-                if (event.key === "Enter") updateFrameLabel(selectedNode.id, event.currentTarget.value)
-                if (event.key === "Escape") setEditingFrameId(null)
+                if (event.key === "Enter") updateFrameLabel(selectedNode.id, frameLabelDraft)
+                if (event.key === "Escape") {
+                  setFrameLabelDraft(frame.label)
+                  setEditingFrameId(null)
+                }
               }}
               className="w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary"
               aria-label="Frame label"

@@ -174,6 +174,22 @@ function CrossingEdgeComponent({
 
   return (
     <>
+      <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+        <defs>
+          <filter id={`${id}-soft-glow`} x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+          </filter>
+        </defs>
+        <path
+          d={edgePath}
+          fill="none"
+          stroke="var(--primary)"
+          strokeWidth={7}
+          strokeLinecap="round"
+          opacity={0.18}
+          filter={`url(#${id}-soft-glow)`}
+        />
+      </svg>
       <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
       <EdgeLabelRenderer>
         {crossingPoints.map((point, index) => (

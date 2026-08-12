@@ -198,8 +198,18 @@ export function GraphCanvas() {
     requestAnimationFrame(() => { restoringHistoryRef.current = false })
   }, [setNodes, setEdges])
 
-  const undo = useCallback(() => restoreHistory(historyIndexRef.current - 1), [restoreHistory])
-  const redo = useCallback(() => restoreHistory(historyIndexRef.current + 1), [restoreHistory])
+  const undo = useCallback(() => {
+    const nextIndex = historyIndexRef.current - 1
+    if (!historyRef.current[nextIndex]) return
+    restoreHistory(nextIndex)
+    playSound("undo")
+  }, [playSound, restoreHistory])
+  const redo = useCallback(() => {
+    const nextIndex = historyIndexRef.current + 1
+    if (!historyRef.current[nextIndex]) return
+    restoreHistory(nextIndex)
+    playSound("redo")
+  }, [playSound, restoreHistory])
 
   useEffect(() => {
     const handleHistoryKey = (event: KeyboardEvent) => {
@@ -320,6 +330,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
             data: { useSmoothStep: useTidyEdges },
           }
           setEdges((eds) => [...eds, newEdge])
+          playSound("edgeConnect")
       }
     },
     [reactFlowInstance, nodes, edges, contextMenu, createNode, setNodes, setEdges, useTidyEdges, playSound]

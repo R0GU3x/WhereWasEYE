@@ -12,6 +12,8 @@ export type SoundType =
   | "success"
   | "error"
   | "snap"
+  | "undo"
+  | "redo"
 
 type SoundConfig = {
   frequency: number
@@ -20,18 +22,21 @@ type SoundConfig = {
   gain: number
   harmonic?: number
   cooldown?: number
+  slide?: number
 }
 
 const SOUND_CONFIG: Record<SoundType, SoundConfig> = {
-  nodeCreate: { frequency: 520, duration: 90, type: "sine", gain: 0.1, harmonic: 1.5 },
-  nodeDelete: { frequency: 280, duration: 130, type: "sawtooth", gain: 0.06 },
-  edgeConnect: { frequency: 660, duration: 70, type: "sine", gain: 0.08, harmonic: 2 },
-  edgeDisconnect: { frequency: 330, duration: 110, type: "triangle", gain: 0.06 },
-  statusChange: { frequency: 440, duration: 60, type: "sine", gain: 0.08 },
-  click: { frequency: 800, duration: 35, type: "sine", gain: 0.045, cooldown: 45 },
-  success: { frequency: 880, duration: 170, type: "sine", gain: 0.08, harmonic: 1.5 },
-  error: { frequency: 200, duration: 210, type: "sawtooth", gain: 0.06 },
-  snap: { frequency: 740, duration: 85, type: "triangle", gain: 0.075, harmonic: 2.02, cooldown: 180 },
+  nodeCreate: { frequency: 520, duration: 72, type: "sine", gain: 0.07, harmonic: 1.5, cooldown: 55, slide: 0.9 },
+  nodeDelete: { frequency: 250, duration: 86, type: "triangle", gain: 0.045, cooldown: 55, slide: 0.68 },
+  edgeConnect: { frequency: 640, duration: 62, type: "sine", gain: 0.06, harmonic: 2, cooldown: 55, slide: 1.04 },
+  edgeDisconnect: { frequency: 320, duration: 78, type: "triangle", gain: 0.045, cooldown: 55, slide: 0.76 },
+  statusChange: { frequency: 440, duration: 52, type: "sine", gain: 0.055, cooldown: 45, slide: 0.94 },
+  click: { frequency: 800, duration: 28, type: "sine", gain: 0.03, cooldown: 45, slide: 0.82 },
+  success: { frequency: 880, duration: 110, type: "sine", gain: 0.055, harmonic: 1.5, cooldown: 80, slide: 1.02 },
+  error: { frequency: 200, duration: 140, type: "triangle", gain: 0.045, cooldown: 100, slide: 0.7 },
+  snap: { frequency: 740, duration: 68, type: "triangle", gain: 0.06, harmonic: 2.02, cooldown: 180, slide: 0.88 },
+  undo: { frequency: 430, duration: 72, type: "triangle", gain: 0.045, cooldown: 70, slide: 0.78 },
+  redo: { frequency: 560, duration: 72, type: "sine", gain: 0.045, cooldown: 70, slide: 0.96 },
 }
 
 const STORAGE_KEY = "cyber-graph-sound-enabled"
@@ -67,13 +72,15 @@ export function useSound() {
     try {
       const ctx = getAudioContext()
       if (ctx.state === "suspended") void ctx.resume()
-      const start = ctx.currentTime
-      const end = start + config.duration / 1000
-      const oscillator = ctx.createOscillator()
+    const start = ctx.currentTime
+    const end = start + config.duration / 1000
+    const variation = 1 + (Math.random() - 0.5) * 0.025
+    const oscillator = ctx.createOscillator()
+
       const gainNode = ctx.createGain()
       oscillator.type = config.type
-      oscillator.frequency.setValueAtTime(config.frequency, start)
-      oscillator.frequency.exponentialRampToValueAtTime(config.frequency * 0.82, end)
+      oscillator.frequency.setValueAtTime(config.frequency * variation, start)
+      oscillator.frequency.exponentialRampToValueAtTime(config.frequency * (config.slide ?? 0.82) * variation, end)
       gainNode.gain.setValueAtTime(0.001, start)
       gainNode.gain.exponentialRampToValueAtTime(config.gain, start + 0.008)
       gainNode.gain.exponentialRampToValueAtTime(0.001, end)
@@ -86,7 +93,7 @@ export function useSound() {
         const overtone = ctx.createOscillator()
         const overtoneGain = ctx.createGain()
         overtone.type = "sine"
-        overtone.frequency.setValueAtTime(config.frequency * config.harmonic, start)
+        overtone.frequency.setValueAtTime(config.frequency * config.harmonic * variation, start)
         overtoneGain.gain.setValueAtTime(config.gain * 0.22, start)
         overtoneGain.gain.exponentialRampToValueAtTime(0.001, end)
         overtone.connect(overtoneGain)

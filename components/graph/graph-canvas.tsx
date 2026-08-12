@@ -91,6 +91,7 @@ export function GraphCanvas() {
     coordinate: number
   }>>([])
   const initialFitViewComplete = useRef(false)
+  const restoredGraphRef = useRef(false)
   const historyRef = useRef<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
   const historyIndexRef = useRef(-1)
   const historyReadyRef = useRef(false)
@@ -123,6 +124,7 @@ export function GraphCanvas() {
                           node.data.status || "default"
           }
         }))
+        restoredGraphRef.current = updatedNodes.length > 0
         setNodes(updatedNodes)
 
         // Update edges with proper type
@@ -153,7 +155,7 @@ export function GraphCanvas() {
   }, [nodes])
 
   useEffect(() => {
-    if (initialFitViewComplete.current || !reactFlowInstance || nodes.length === 0) return
+    if (initialFitViewComplete.current || !restoredGraphRef.current || !reactFlowInstance || nodes.length === 0) return
 
     const frame = requestAnimationFrame(() => {
       if (initialFitViewComplete.current) return
@@ -1135,8 +1137,10 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
         </div>
       )}
 
-      <ReactFlow
-        nodes={nodes.map((node) => ({
+        <ReactFlow
+          defaultViewport={{ x: 0, y: 0, zoom: 0.75 }}
+          nodes={nodes.map((node) => ({
+
           ...node,
           selected: selectedNodes.has(node.id) || node.selected,
         }))}

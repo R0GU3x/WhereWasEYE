@@ -131,7 +131,7 @@ export function GraphCanvas() {
         const updatedEdges = (savedEdges || []).map((edge: Edge) => ({
           ...edge,
           type: tidyMode ? "smoothstep" : "crossing",
-          data: { ...edge.data, useSmoothStep: tidyMode },
+          data: { useSmoothStep: tidyMode },
         }))
         setEdges(updatedEdges)
 
@@ -311,7 +311,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
             targetHandle: "top-target",
             ...defaultEdgeOptions,
             type: useTidyEdges ? "smoothstep" : "crossing",
-            data: { useSmoothStep: useTidyEdges, routePoints: [] },
+            data: { useSmoothStep: useTidyEdges },
           }
           setEdges((eds) => [...eds, newEdge])
       }

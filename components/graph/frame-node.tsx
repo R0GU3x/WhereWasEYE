@@ -23,7 +23,7 @@ function FrameNodeComponent({ data, selected, id }: NodeProps) {
         "relative rounded-xl border border-dashed border-slate-400/45 bg-slate-400/[0.025] shadow-[inset_0_0_28px_rgba(148,163,184,0.025)] before:pointer-events-none before:absolute before:inset-0 before:rounded-xl before:border before:border-slate-300/10 before:content-['']",
         selected && "ring-1 ring-slate-300/70"
       )}
-      style={{ width: frame.frameWidth, height: frame.frameHeight }}
+      style={{ width: "100%", height: "100%" }}
     >
       <NodeResizer
         isVisible={Boolean(selected)}

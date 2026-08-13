@@ -79,7 +79,6 @@ export function GraphCanvas() {
   const [frameDraft, setFrameDraft] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const frameStartRef = useRef<XYPosition | null>(null)
   const frameDraftRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
-  const frameResizeBaseRef = useRef<Record<string, { x: number; y: number }>>({})
   const [isDrawingSelectBox, setIsDrawingSelectBox] = useState(false)
   const [selectStart, setSelectStart] = useState<{ x: number; y: number } | null>(null)
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
@@ -166,36 +165,6 @@ export function GraphCanvas() {
       if (width) nodeWidthRef.current.set(node.id, width)
     }
   }, [nodes])
-
-  useEffect(() => {
-    const handleFrameResizeStart = (event: Event) => {
-      const { id } = (event as CustomEvent<{ id: string }>).detail ?? {}
-      const node = nodes.find((candidate) => candidate.id === id)
-      if (node) frameResizeBaseRef.current[id] = { ...node.position }
-    }
-    const handleFrameResize = (event: Event) => {
-      const detail = (event as CustomEvent<{ id: string; dx?: number; dy?: number; width: number; height: number }>).detail
-      if (!detail?.id || !Number.isFinite(detail.width) || !Number.isFinite(detail.height)) return
-      setNodes((current) => {
-        let changed = false
-        const next = current.map((node) => {
-          if (node.id !== detail.id || node.type !== "frame") return node
-          const frame = node.data as FrameNodeData
-          if (Math.abs(frame.frameWidth - detail.width) < 0.5 && Math.abs(frame.frameHeight - detail.height) < 0.5) return node
-          changed = true
-          const base = frameResizeBaseRef.current[detail.id] ?? node.position
-          return { ...node, position: { x: base.x + (detail.dx ?? 0), y: base.y + (detail.dy ?? 0) }, data: { ...frame, frameWidth: detail.width, frameHeight: detail.height } }
-        })
-        return changed ? next : current
-      })
-    }
-    window.addEventListener("wherewaseye:frame-resize-start", handleFrameResizeStart)
-    window.addEventListener("wherewaseye:frame-resize", handleFrameResize)
-    return () => {
-      window.removeEventListener("wherewaseye:frame-resize-start", handleFrameResizeStart)
-      window.removeEventListener("wherewaseye:frame-resize", handleFrameResize)
-    }
-  }, [nodes, setNodes])
 
   useEffect(() => {
     const frames = nodes.filter((node) => node.type === "frame")
@@ -716,6 +685,24 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     }
     setContextMenu(null)
   }, [isDrawingSelectBox, isShiftHeld])
+
+  const updateFrameSize = useCallback((frameId: string, width: number, height: number) => {
+    setNodes((current) => current.map((node) => {
+      if (node.id !== frameId || node.type !== "frame") return node
+      const frame = node.data as FrameNodeData
+      if (Math.abs(frame.frameWidth - width) < 0.5 && Math.abs(frame.frameHeight - height) < 0.5) return node
+      return { ...node, data: { ...frame, frameWidth: width, frameHeight: height } }
+    }))
+  }, [setNodes])
+
+  useEffect(() => {
+    const handleResizeEnd = (event: Event) => {
+      const detail = (event as CustomEvent<{ id: string; width: number; height: number }>).detail
+      if (detail?.id && Number.isFinite(detail.width) && Number.isFinite(detail.height)) updateFrameSize(detail.id, detail.width, detail.height)
+    }
+    window.addEventListener("wherewaseye:frame-resize-end", handleResizeEnd)
+    return () => window.removeEventListener("wherewaseye:frame-resize-end", handleResizeEnd)
+  }, [updateFrameSize])
 
   const updateFrameLabel = useCallback((frameId: string, label: string) => {
     setNodes((current) => current.map((node) => node.id === frameId ? { ...node, data: { ...node.data, label: label.trim() || "Frame" } } : node))

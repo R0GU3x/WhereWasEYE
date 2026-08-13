@@ -61,6 +61,7 @@ interface ContextMenuState {
   y: number
   nodeId?: string
   edgeId?: string
+  nodeType?: string
 }
 
 export function GraphCanvas() {
@@ -74,8 +75,6 @@ export function GraphCanvas() {
   const [minimapExpanded, setMinimapExpanded] = useState(true)
   const [isShiftHeld, setIsShiftHeld] = useState(false)
   const [isFrameMode, setIsFrameMode] = useState(false)
-  const [editingFrameId, setEditingFrameId] = useState<string | null>(null)
-  const [frameLabelDraft, setFrameLabelDraft] = useState("")
   const [frameDraft, setFrameDraft] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const frameStartRef = useRef<XYPosition | null>(null)
   const frameDraftRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
@@ -483,8 +482,10 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       setContextMenu({
         x: event.clientX,
         y: event.clientY,
-        nodeId: node.id,
-      })
+  nodeId: node.id,
+  nodeType: node.type,
+  })
+
     },
     []
   )
@@ -539,10 +540,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     (event, node) => {
       event.stopPropagation()
       setSelectedNode(node as GraphNode)
-      if (node.type === "frame") {
-        setFrameLabelDraft(String((node.data as FrameNodeData).label ?? ""))
-        setEditingFrameId(node.id)
-      }
+
     },
     []
   )
@@ -706,8 +704,16 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
 
   const updateFrameLabel = useCallback((frameId: string, label: string) => {
     setNodes((current) => current.map((node) => node.id === frameId ? { ...node, data: { ...node.data, label: label.trim() || "Frame" } } : node))
-    setEditingFrameId(null)
   }, [setNodes])
+
+  useEffect(() => {
+    const handleFrameLabel = (event: Event) => {
+      const detail = (event as CustomEvent<{ id: string; label: string }>).detail
+      if (detail?.id) updateFrameLabel(detail.id, detail.label)
+    }
+    window.addEventListener("wherewaseye:frame-label", handleFrameLabel)
+    return () => window.removeEventListener("wherewaseye:frame-label", handleFrameLabel)
+  }, [updateFrameLabel])
 
   const createFrame = useCallback((bounds: { x: number; y: number; width: number; height: number }) => {
     if (bounds.width < 40 || bounds.height < 40) return
@@ -1238,8 +1244,8 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
               {`
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⢰⠂⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠉⣷⠀⠀⢸⡄⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡄���⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀�����⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠉⣷⠀⠀⢸⡄⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⡄���⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡸⣞���⠀⠀⠀⣼⡿⠀⠀⠀⠀⠉⠉⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣧⢿⣽⡀⠀⠉⠛⠁⠀⣰⣾⠿⠿⣦⡀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣞⡿⣞⡅⠀⠀⠀⠀⠘⠏⠓⠒⠒⠀⠀⠀⠀⠀��
@@ -1637,6 +1643,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
           x={contextMenu.x}
           y={contextMenu.y}
           nodeId={contextMenu.nodeId}
+          nodeType={contextMenu.nodeType}
           edgeId={contextMenu.edgeId}
           onClose={() => setContextMenu(null)}
           onAddNode={handleAddNode}
@@ -1648,31 +1655,6 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
         />
       )}
 
-      {selectedNode?.type === "frame" && (() => {
-        const frame = selectedNode.data as FrameNodeData
-        return (
-          <div className="absolute bottom-4 right-4 z-30 flex w-80 items-center gap-3 rounded-lg border border-slate-400/30 bg-card/95 px-3 py-2 shadow-xl backdrop-blur-sm">
-            <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.2em] text-slate-300/75">Frame label</span>
-            <button type="button" onClick={() => setSelectedNode(null)} className="order-last text-muted-foreground hover:text-foreground" aria-label="Close frame panel"><X size={14} /></button>
-            <input
-              autoFocus={editingFrameId === selectedNode.id}
-              value={frameLabelDraft}
-              onChange={(event) => setFrameLabelDraft(event.target.value)}
-              onBlur={() => updateFrameLabel(selectedNode.id, frameLabelDraft)}
-              onKeyDown={(event) => {
-                if (event.nativeEvent.isComposing || event.keyCode === 229) return
-                if (event.key === "Enter") updateFrameLabel(selectedNode.id, frameLabelDraft)
-                if (event.key === "Escape") {
-                  setFrameLabelDraft(frame.label)
-                  setEditingFrameId(null)
-                }
-              }}
-              className="w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary"
-              aria-label="Frame label"
-            />
-          </div>
-        )
-      })()}
 
       {/* Detail Panel */}
       {selectedNode && selectedNode.type !== "frame" && (

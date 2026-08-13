@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useCallback } from "react"
+import { memo, useCallback, useState } from "react"
 import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react"
 import { cn } from "@/lib/utils"
 
@@ -13,6 +13,12 @@ export interface FrameNodeData extends Record<string, unknown> {
 
 function FrameNodeComponent({ data, selected, id }: NodeProps) {
   const frame = data as unknown as FrameNodeData
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(frame.label)
+  const commitLabel = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("wherewaseye:frame-label", { detail: { id, label: draft } }))
+    setEditing(false)
+  }, [draft, id])
   const onResizeEnd = useCallback((_event: unknown, params: { width: number; height: number }) => {
     window.dispatchEvent(new CustomEvent("wherewaseye:frame-resize-end", { detail: { id, width: params.width, height: params.height } }))
   }, [id])
@@ -35,9 +41,36 @@ function FrameNodeComponent({ data, selected, id }: NodeProps) {
       />
       <div className="pointer-events-none absolute left-4 top-3 z-10 flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full bg-slate-300 shadow-[0_0_8px_rgba(203,213,225,0.55)]" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-slate-300/75">
-          {frame.label || "Frame"}
-        </span>
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={commitLabel}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return
+              if (event.key === "Enter") commitLabel()
+              if (event.key === "Escape") {
+                setDraft(frame.label)
+                setEditing(false)
+              }
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            className="pointer-events-auto w-32 rounded border border-slate-400/40 bg-background/90 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em] text-slate-300/90 outline-none focus:border-slate-300/70"
+            aria-label="Frame label"
+          />
+        ) : (
+          <span
+            onDoubleClick={(event) => {
+              event.stopPropagation()
+              setDraft(frame.label)
+              setEditing(true)
+            }}
+            className="pointer-events-auto cursor-text font-mono text-[10px] uppercase tracking-[0.24em] text-slate-300/75"
+          >
+            {frame.label || "Frame"}
+          </span>
+        )}
       </div>
       {(
         [

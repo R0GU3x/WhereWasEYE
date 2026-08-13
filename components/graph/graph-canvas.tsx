@@ -173,6 +173,10 @@ export function GraphCanvas() {
       const node = nodes.find((candidate) => candidate.id === id)
       if (node) frameResizeBaseRef.current[id] = { ...node.position }
     }
+    const handleFrameGeometry = (event: Event) => {
+      const { id } = (event as CustomEvent<{ id: string }>).detail ?? {}
+      if (id) reactFlowInstance?.updateNodeInternals(id)
+    }
     const handleFrameResize = (event: Event) => {
       const detail = (event as CustomEvent<{ id: string; dx?: number; dy?: number; width: number; height: number }>).detail
       if (!detail?.id || !Number.isFinite(detail.width) || !Number.isFinite(detail.height)) return
@@ -189,9 +193,11 @@ export function GraphCanvas() {
         return changed ? next : current
       })
     }
+    window.addEventListener("wherewaseye:frame-geometry", handleFrameGeometry)
     window.addEventListener("wherewaseye:frame-resize-start", handleFrameResizeStart)
     window.addEventListener("wherewaseye:frame-resize", handleFrameResize)
     return () => {
+      window.removeEventListener("wherewaseye:frame-geometry", handleFrameGeometry)
       window.removeEventListener("wherewaseye:frame-resize-start", handleFrameResizeStart)
       window.removeEventListener("wherewaseye:frame-resize", handleFrameResize)
     }
@@ -1664,11 +1670,9 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       {selectedNode?.type === "frame" && (() => {
         const frame = selectedNode.data as FrameNodeData
         return (
-          <div className="absolute right-4 top-20 z-30 w-64 rounded-lg border border-slate-400/30 bg-card/95 p-3 shadow-xl backdrop-blur-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-300/75">Frame label</span>
-              <button type="button" onClick={() => setSelectedNode(null)} className="text-muted-foreground hover:text-foreground" aria-label="Close frame panel"><X size={14} /></button>
-            </div>
+          <div className="absolute bottom-4 left-4 z-30 flex w-80 items-center gap-3 rounded-lg border border-slate-400/30 bg-card/95 px-3 py-2 shadow-xl backdrop-blur-sm">
+            <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.2em] text-slate-300/75">Frame label</span>
+            <button type="button" onClick={() => setSelectedNode(null)} className="order-last text-muted-foreground hover:text-foreground" aria-label="Close frame panel"><X size={14} /></button>
             <input
               autoFocus={editingFrameId === selectedNode.id}
               value={frameLabelDraft}

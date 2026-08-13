@@ -618,6 +618,8 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
 
     const session = nodeDragSession.current
     if (!session) {
+      setAlignmentGuides([])
+      snapActiveRef.current = false
       onNodesChange([...correctedChanges, ...syntheticPositionChanges])
       return
     }
@@ -669,6 +671,9 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       setAlignmentGuides(guides.filter((guide, index, all) =>
         all.findIndex((item) => item.axis === guide.axis && Math.abs(item.coordinate - guide.coordinate) < 0.5) === index
       ))
+    } else {
+      setAlignmentGuides([])
+      snapActiveRef.current = false
     }
 
     const isSnapped = Boolean(snapDelta.x || snapDelta.y)
@@ -677,12 +682,15 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     }
     snapActiveRef.current = isSnapped
 
-    const changesWithSnap = snapDelta.x || snapDelta.y ? correctedChanges.map((change) => {
-      if (change.type !== "position" || !change.position) return change
+    const applySnap = <T extends NodeChange<GraphNode>>(change: T): T => {
+      if (!snapDelta.x && !snapDelta.y) return change
+      if (change.type !== "position" || !change.position || !session.nodeIds.includes(change.id)) return change
       return { ...change, position: { x: change.position.x + snapDelta.x, y: change.position.y + snapDelta.y } }
-    }) : correctedChanges
+    }
+    const changesWithSnap = correctedChanges.map(applySnap)
+    const syntheticWithSnap = syntheticPositionChanges.map(applySnap)
 
-    onNodesChange([...changesWithSnap, ...syntheticPositionChanges])
+    onNodesChange([...changesWithSnap, ...syntheticWithSnap])
   }, [onNodesChange, nodes, playSound, reactFlowInstance])
 
   const onPaneClick = useCallback(() => {

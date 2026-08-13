@@ -22,6 +22,7 @@ import {
 import "@xyflow/react/dist/style.css"
 
 import { CyberNode, type CyberNodeData, type NodeStatus } from "./cyber-node"
+import { FrameNode, type FrameNodeData } from "./frame-node"
 import { ContextMenu } from "./context-menu"
 import { DetailPanel } from "./detail-panel"
 import { CrossingEdge } from "./crossing-edge"
@@ -32,8 +33,13 @@ import { cn } from "@/lib/utils"
 
 const APP_VERSION = "v4.7.3"
 
+type GraphNodeData = CyberNodeData | FrameNodeData
+
+type GraphNode = Node<GraphNodeData>
+
 const nodeTypes = {
   cyber: CyberNode,
+  frame: FrameNode,
 }
 
 const edgeTypes = {
@@ -55,18 +61,23 @@ interface ContextMenuState {
   y: number
   nodeId?: string
   edgeId?: string
+  nodeType?: string
 }
 
 export function GraphCanvas() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<CyberNodeData>>([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<GraphNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
-  const [selectedNode, setSelectedNode] = useState<Node<CyberNodeData> | null>(null)
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set())
   const [showHelp, setShowHelp] = useState(false)
   const helpContainerRef = useRef<HTMLDivElement>(null)
   const [minimapExpanded, setMinimapExpanded] = useState(true)
   const [isShiftHeld, setIsShiftHeld] = useState(false)
+  const [isFrameMode, setIsFrameMode] = useState(false)
+  const [frameDraft, setFrameDraft] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
+  const frameStartRef = useRef<XYPosition | null>(null)
+  const frameDraftRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
   const [isDrawingSelectBox, setIsDrawingSelectBox] = useState(false)
   const [selectStart, setSelectStart] = useState<{ x: number; y: number } | null>(null)
   const [selectBox, setSelectBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
@@ -92,7 +103,7 @@ export function GraphCanvas() {
   }>>([])
   const initialFitViewComplete = useRef(false)
   const restoredGraphRef = useRef(false)
-  const historyRef = useRef<Array<{ nodes: Node<CyberNodeData>[]; edges: Edge[] }>>([])
+  const historyRef = useRef<Array<{ nodes: GraphNode[]; edges: Edge[] }>>([])
   const historyIndexRef = useRef(-1)
   const historyReadyRef = useRef(false)
   const restoringHistoryRef = useRef(false)
@@ -110,7 +121,7 @@ export function GraphCanvas() {
         const { nodes: savedNodes, edges: savedEdges, useTidyEdges: savedTidyEdges } = JSON.parse(savedData)
 
         // Update nodes with correct status type (handle legacy data)
-        const updatedNodes = (savedNodes || []).map((node: Node<CyberNodeData>) => ({
+        const updatedNodes = (savedNodes || []).map((node: GraphNode) => ({
           ...node,
           data: {
             ...node.data,
@@ -155,6 +166,28 @@ export function GraphCanvas() {
   }, [nodes])
 
   useEffect(() => {
+    const frames = nodes.filter((node) => node.type === "frame")
+    if (frames.length === 0) return
+    let changed = false
+    const nextNodes = nodes.map((node) => {
+      if (node.type !== "frame") return node
+      const frame = node.data as FrameNodeData
+      const memberIds = nodes.filter((candidate) => {
+        if (candidate.type === "frame" || candidate.id === node.id) return false
+        const width = candidate.measured?.width ?? candidate.width ?? 140
+        const height = candidate.measured?.height ?? candidate.height ?? 60
+        return candidate.position.x >= node.position.x && candidate.position.y >= node.position.y && candidate.position.x + width <= node.position.x + frame.frameWidth && candidate.position.y + height <= node.position.y + frame.frameHeight
+      }).map((candidate) => candidate.id)
+      if (JSON.stringify(memberIds) !== JSON.stringify(frame.memberIds)) {
+        changed = true
+        return { ...node, data: { ...frame, memberIds } }
+      }
+      return node
+    })
+    if (changed) setNodes(nextNodes)
+  }, [nodes, setNodes])
+
+  useEffect(() => {
     if (initialFitViewComplete.current || !restoredGraphRef.current || !reactFlowInstance || nodes.length === 0) return
 
     const frame = requestAnimationFrame(() => {
@@ -166,7 +199,7 @@ export function GraphCanvas() {
     return () => cancelAnimationFrame(frame)
   }, [reactFlowInstance, nodes.length])
 
-  const pushHistory = useCallback((nextNodes: Node<CyberNodeData>[], nextEdges: Edge[]) => {
+  const pushHistory = useCallback((nextNodes: GraphNode[], nextEdges: Edge[]) => {
     if (restoringHistoryRef.current) return
     const snapshot = { nodes: structuredClone(nextNodes), edges: structuredClone(nextEdges) }
     const current = historyRef.current[historyIndexRef.current]
@@ -261,7 +294,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
   )
 
   const createNode = useCallback(
-    (position: { x: number; y: number }): Node<CyberNodeData> => {
+    (position: { x: number; y: number }): GraphNode => {
       const id = `node-${Date.now()}`
       return {
         id,
@@ -449,8 +482,10 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       setContextMenu({
         x: event.clientX,
         y: event.clientY,
-        nodeId: node.id,
-      })
+  nodeId: node.id,
+  nodeType: node.type,
+  })
+
     },
     []
   )
@@ -494,7 +529,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
         setSelectedNode(null)
       } else {
         // Normal click - open detail panel
-        setSelectedNode(node as Node<CyberNodeData>)
+        setSelectedNode(node as GraphNode)
         setSelectedNodes(new Set())
       }
     },
@@ -504,12 +539,13 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
   const onNodeDoubleClick: NodeMouseHandler = useCallback(
     (event, node) => {
       event.stopPropagation()
-      setSelectedNode(node as Node<CyberNodeData>)
+      setSelectedNode(node as GraphNode)
+
     },
     []
   )
 
-  const onNodeDragStart = useCallback((_event: React.MouseEvent, node: Node<CyberNodeData>) => {
+  const onNodeDragStart = useCallback((_event: React.MouseEvent, node: GraphNode) => {
     const nodeIds = selectedNodes.has(node.id) ? Array.from(selectedNodes) : [node.id]
     nodeDragSession.current = {
       nodeIds,
@@ -520,7 +556,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     setAlignmentGuides([])
   }, [selectedNodes])
 
-  const onNodeDrag = useCallback((_event: React.MouseEvent, node: Node<CyberNodeData>) => {
+  const onNodeDrag = useCallback((_event: React.MouseEvent, node: GraphNode) => {
     // React Flow owns the authoritative drag position. This callback only derives
     // alignment feedback; it never writes node positions, preventing release drift.
     const session = nodeDragSession.current
@@ -551,9 +587,9 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     setAlignmentGuides([])
   }, [])
 
-  const handleNodesChange = useCallback((changes: NodeChange<Node<CyberNodeData>>[]) => {
+  const handleNodesChange = useCallback((changes: NodeChange<GraphNode>[]) => {
     const dimensionChanges = changes.filter(
-      (change): change is Extract<NodeChange<Node<CyberNodeData>>, { type: "dimensions" }> => change.type === "dimensions" && Boolean(change.dimensions)
+      (change): change is Extract<NodeChange<GraphNode>, { type: "dimensions" }> => change.type === "dimensions" && Boolean(change.dimensions)
     )
     const positionCorrection = new Map<string, number>()
 
@@ -582,11 +618,13 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
 
     const session = nodeDragSession.current
     if (!session) {
+      setAlignmentGuides([])
+      snapActiveRef.current = false
       onNodesChange([...correctedChanges, ...syntheticPositionChanges])
       return
     }
 
-    const positionChanges = changes.filter((change): change is Extract<NodeChange<Node<CyberNodeData>>, { type: "position" }> => change.type === "position" && Boolean(change.position))
+    const positionChanges = changes.filter((change): change is Extract<NodeChange<GraphNode>, { type: "position" }> => change.type === "position" && Boolean(change.position))
     const anchorChange = positionChanges.find((change) => change.id === session.anchorId)
     const anchorNode = nodes.find((node) => node.id === session.anchorId)
     const zoom = reactFlowInstance?.getZoom() ?? 1
@@ -596,10 +634,10 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     if (anchorChange?.position && anchorNode && reactFlowInstance) {
       const anchorWidth = anchorNode.measured?.width ?? anchorNode.width ?? 0
       const anchorHeight = anchorNode.measured?.height ?? anchorNode.height ?? 0
-      const anchorCenter = {
-        x: anchorChange.position.x + anchorWidth / 2,
-        y: anchorChange.position.y + anchorHeight / 2,
-      }
+      const anchorX = anchorChange.position.x
+      const anchorY = anchorChange.position.y
+      const anchorXRefs = [anchorX, anchorX + anchorWidth / 2, anchorX + anchorWidth]
+      const anchorYRefs = [anchorY, anchorY + anchorHeight / 2, anchorY + anchorHeight]
       const others = nodes.filter((node) => !session.nodeIds.includes(node.id))
       let bestX: { delta: number; distance: number } | null = null
       let bestY: { delta: number; distance: number } | null = null
@@ -607,21 +645,35 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       for (const other of others) {
         const width = other.measured?.width ?? other.width ?? anchorWidth
         const height = other.measured?.height ?? other.height ?? anchorHeight
-        const xDelta = other.position.x + width / 2 - anchorCenter.x
-        const yDelta = other.position.y + height / 2 - anchorCenter.y
-        if (Math.abs(xDelta) <= snapThreshold) {
-          guides.push({ axis: "vertical", coordinate: other.position.x + width / 2 })
-          if (!bestX || Math.abs(xDelta) < bestX.distance) bestX = { delta: xDelta, distance: Math.abs(xDelta) }
+        const otherXRefs = [other.position.x, other.position.x + width / 2, other.position.x + width]
+        const otherYRefs = [other.position.y, other.position.y + height / 2, other.position.y + height]
+
+        for (const target of otherXRefs) {
+          for (const source of anchorXRefs) {
+            const delta = target - source
+            if (Math.abs(delta) <= snapThreshold) {
+              guides.push({ axis: "vertical", coordinate: target })
+              if (!bestX || Math.abs(delta) < bestX.distance) bestX = { delta, distance: Math.abs(delta) }
+            }
+          }
         }
-        if (Math.abs(yDelta) <= snapThreshold) {
-          guides.push({ axis: "horizontal", coordinate: other.position.y + height / 2 })
-          if (!bestY || Math.abs(yDelta) < bestY.distance) bestY = { delta: yDelta, distance: Math.abs(yDelta) }
+        for (const target of otherYRefs) {
+          for (const source of anchorYRefs) {
+            const delta = target - source
+            if (Math.abs(delta) <= snapThreshold) {
+              guides.push({ axis: "horizontal", coordinate: target })
+              if (!bestY || Math.abs(delta) < bestY.distance) bestY = { delta, distance: Math.abs(delta) }
+            }
+          }
         }
       }
       snapDelta = { x: bestX?.delta ?? 0, y: bestY?.delta ?? 0 }
       setAlignmentGuides(guides.filter((guide, index, all) =>
         all.findIndex((item) => item.axis === guide.axis && Math.abs(item.coordinate - guide.coordinate) < 0.5) === index
       ))
+    } else {
+      setAlignmentGuides([])
+      snapActiveRef.current = false
     }
 
     const isSnapped = Boolean(snapDelta.x || snapDelta.y)
@@ -630,12 +682,15 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     }
     snapActiveRef.current = isSnapped
 
-    const changesWithSnap = snapDelta.x || snapDelta.y ? correctedChanges.map((change) => {
-      if (change.type !== "position" || !change.position) return change
+    const applySnap = <T extends NodeChange<GraphNode>>(change: T): T => {
+      if (!snapDelta.x && !snapDelta.y) return change
+      if (change.type !== "position" || !change.position || !session.nodeIds.includes(change.id)) return change
       return { ...change, position: { x: change.position.x + snapDelta.x, y: change.position.y + snapDelta.y } }
-    }) : correctedChanges
+    }
+    const changesWithSnap = correctedChanges.map(applySnap)
+    const syntheticWithSnap = syntheticPositionChanges.map(applySnap)
 
-    onNodesChange([...changesWithSnap, ...syntheticPositionChanges])
+    onNodesChange([...changesWithSnap, ...syntheticWithSnap])
   }, [onNodesChange, nodes, playSound, reactFlowInstance])
 
   const onPaneClick = useCallback(() => {
@@ -648,7 +703,106 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     setContextMenu(null)
   }, [isDrawingSelectBox, isShiftHeld])
 
-  // Handle pane mouse down for Shift + drag selection box
+  const updateFrameSize = useCallback((frameId: string, width: number, height: number) => {
+    setNodes((current) => current.map((node) => {
+      if (node.id !== frameId || node.type !== "frame") return node
+      const frame = node.data as FrameNodeData
+      if (Math.abs(frame.frameWidth - width) < 0.5 && Math.abs(frame.frameHeight - height) < 0.5) return node
+      return { ...node, data: { ...frame, frameWidth: width, frameHeight: height } }
+    }))
+  }, [setNodes])
+
+  useEffect(() => {
+    const handleResizeEnd = (event: Event) => {
+      const detail = (event as CustomEvent<{ id: string; width: number; height: number }>).detail
+      if (detail?.id && Number.isFinite(detail.width) && Number.isFinite(detail.height)) updateFrameSize(detail.id, detail.width, detail.height)
+    }
+    window.addEventListener("wherewaseye:frame-resize-end", handleResizeEnd)
+    return () => window.removeEventListener("wherewaseye:frame-resize-end", handleResizeEnd)
+  }, [updateFrameSize])
+
+  const updateFrameLabel = useCallback((frameId: string, label: string) => {
+    setNodes((current) => current.map((node) => node.id === frameId ? { ...node, data: { ...node.data, label: label.trim() || "Frame" } } : node))
+  }, [setNodes])
+
+  useEffect(() => {
+    const handleFrameLabel = (event: Event) => {
+      const detail = (event as CustomEvent<{ id: string; label: string }>).detail
+      if (detail?.id) updateFrameLabel(detail.id, detail.label)
+    }
+    window.addEventListener("wherewaseye:frame-label", handleFrameLabel)
+    return () => window.removeEventListener("wherewaseye:frame-label", handleFrameLabel)
+  }, [updateFrameLabel])
+
+  const createFrame = useCallback((bounds: { x: number; y: number; width: number; height: number }) => {
+    if (bounds.width < 40 || bounds.height < 40) return
+    const frameId = `frame-${Date.now()}`
+    const memberIds = nodes.filter((node) => {
+      if (node.type === "frame") return false
+      const width = node.measured?.width ?? node.width ?? 140
+      const height = node.measured?.height ?? node.height ?? 60
+      return node.position.x >= bounds.x && node.position.y >= bounds.y && node.position.x + width <= bounds.x + bounds.width && node.position.y + height <= bounds.y + bounds.height
+    }).map((node) => node.id)
+    const frame: GraphNode = {
+      id: frameId,
+      type: "frame",
+      position: { x: bounds.x, y: bounds.y },
+      zIndex: -1,
+      selectable: true,
+      data: { label: "Frame", frameWidth: bounds.width, frameHeight: bounds.height, memberIds },
+    }
+    setNodes((current) => [...current, frame])
+    playSound("nodeCreate")
+  }, [nodes, playSound, setNodes])
+
+  useEffect(() => {
+    if (!isFrameMode || !reactFlowInstance) return
+
+    let drawing = false
+    let start: XYPosition | null = null
+
+    const onPointerDown = (event: PointerEvent) => {
+      const wrapper = reactFlowWrapper.current
+      const target = event.target as HTMLElement
+      if (!wrapper || !wrapper.contains(target) || target.closest(".react-flow__node")) return
+      event.preventDefault()
+      const nextStart = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      start = nextStart
+      drawing = true
+      frameStartRef.current = nextStart
+      setFrameDraft({ x: nextStart.x, y: nextStart.y, width: 0, height: 0 })
+    }
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (!drawing || !start) return
+      const current = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      const draft = { x: Math.min(start.x, current.x), y: Math.min(start.y, current.y), width: Math.abs(current.x - start.x), height: Math.abs(current.y - start.y) }
+      frameDraftRef.current = draft
+      setFrameDraft(draft)
+    }
+
+    const onPointerUp = () => {
+      if (!drawing || !start) return
+      const current = frameDraftRef.current
+      if (current) createFrame(current)
+      drawing = false
+      start = null
+      frameStartRef.current = null
+      frameDraftRef.current = null
+      setFrameDraft(null)
+      setIsFrameMode(false)
+    }
+
+    document.addEventListener("pointerdown", onPointerDown)
+    document.addEventListener("pointermove", onPointerMove)
+    document.addEventListener("pointerup", onPointerUp)
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown)
+      document.removeEventListener("pointermove", onPointerMove)
+      document.removeEventListener("pointerup", onPointerUp)
+    }
+  }, [createFrame, isFrameMode, reactFlowInstance])
+
   const handlePaneMouseDown = useCallback((e: React.MouseEvent) => {
     if (!isShiftHeld || e.button !== 0) return
     if ((e.target as HTMLElement).closest('.react-flow__node')) return
@@ -678,7 +832,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       width: Math.abs(width),
       height: Math.abs(height),
     })
-  }, [isDrawingSelectBox, selectStart])
+  }, [isFrameMode, isDrawingSelectBox, selectStart, reactFlowInstance])
 
   // Handle pane mouse up to finalize selection
   const handlePaneMouseUp = useCallback(() => {
@@ -759,7 +913,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     setIsDrawingSelectBox(false)
     setSelectBox(null)
     setSelectStart(null)
-  }, [isDrawingSelectBox, selectBox, nodes, reactFlowInstance, selectedNodes, setNodes])
+  }, [isFrameMode, frameDraft, createFrame, isDrawingSelectBox, selectBox, nodes, reactFlowInstance, selectedNodes, setNodes])
 
   // Custom scroll and zoom handler
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -804,11 +958,16 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
-      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
       // Track shift key
       if (e.key === "Shift") {
         setIsShiftHeld(true)
+      }
+
+      if (e.key.toLowerCase() === "r" && !isInput && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault()
+        setIsFrameMode((active) => !active)
       }
 
       // Delete/Backspace for selected nodes
@@ -897,7 +1056,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
           throw new Error("Invalid graph structure")
         }
 
-        const updatedNodes = data.nodes.map((node: Node<CyberNodeData>) => ({
+        const updatedNodes = data.nodes.map((node: GraphNode) => ({
           ...node,
           data: {
             ...node.data,
@@ -1025,7 +1184,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
   return (
     <div
       ref={reactFlowWrapper}
-      className="relative h-screen w-screen"
+      className={cn("relative h-screen w-screen", isFrameMode ? "cursor-crosshair" : isShiftHeld ? "cursor-crosshair" : "cursor-grab")}
       onMouseDown={handlePaneMouseDown}
       onMouseMove={handlePaneMouseMove}
       onMouseUp={handlePaneMouseUp}
@@ -1034,8 +1193,18 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       onDragOver={handleCanvasDragOver}
       onDragLeave={handleCanvasDragLeave}
       onDrop={handleCanvasDrop}
-      style={{ cursor: isShiftHeld ? 'crosshair' : 'grab' }}
     >
+      {frameDraft && reactFlowInstance && (
+        <div
+          className="pointer-events-none absolute z-30 rounded-xl border border-dashed border-primary/70 bg-primary/10"
+          style={{
+            left: reactFlowInstance.flowToScreenPosition({ x: frameDraft.x, y: frameDraft.y }).x - reactFlowWrapper.current!.getBoundingClientRect().left,
+            top: reactFlowInstance.flowToScreenPosition({ x: frameDraft.x, y: frameDraft.y }).y - reactFlowWrapper.current!.getBoundingClientRect().top,
+            width: frameDraft.width * reactFlowInstance.getZoom(),
+            height: frameDraft.height * reactFlowInstance.getZoom(),
+          }}
+        />
+      )}
       {alignmentGuides.length > 0 && reactFlowInstance && alignmentGuides.map((alignmentGuide, index) => {
         const guide = reactFlowInstance.flowToScreenPosition(
           alignmentGuide.axis === "vertical"
@@ -1092,30 +1261,30 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
             {/* ASCII Art Style Robot/Hacker */}
             <pre className="font-mono text-xs text-muted-foreground leading-none select-none">
               {`
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⢰⠂⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠉⣷⠀⠀⢸⡄⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡄⠀⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡸⣞⡇⠀⠀⠀⣼⡿⠀⠀⠀⠀⠉⠉⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀���⠂⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀�����⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠉⣷⠀⠀⢸⡄⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⡄���⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡸⣞���⠀⠀⠀⣼⡿⠀⠀⠀⠀⠉⠉⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣧⢿⣽⡀⠀⠉⠛⠁⠀⣰⣾⠿⠿⣦⡀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣞⡿⣞⡅⠀⠀⠀⠀⠘⠏⠓⠒⠒⠀⠀⠀⠀⠀��
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣟⢾⣽⢫⡿⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⢤⣶⡻⣞⣿⣺⢯⣽⣳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⢠⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣤⣿⣽⣻⢾⣽⣷⣾⣽⣻⣞⣷⣳⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣶⣄⡀⠀⠀⠀⣀⣲⣴⢶⣞⡿⣽⣞⡷⣯⢿⡽⣞⣿⠟⠋⠁⠉⠈⠳⣟⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⢤⣶⡻���⣿⣺⢯⣽⣳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⢠⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣤⣿⣽⣻⢾⣽⣷⣾⣽⣻⣞⣷⣳⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣶⣄⡀⠀⠀⠀⣀⣲⣴⢶⣞⡿⣽⣞⡷⣯⢿⡽⣞⣿⠟⠋⠁⠉⠈⠳⣟⣆⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀���⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⢶⣾⣿⡽⣯⣟⡾⣽⡷⣯⣟⡽⡾⣽⡯⠁⠀⠀⠀⠀⠀⠀⢮⣭⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⢞⣿⣿⢯⡿⣿⣯⣟⣷⣯⢿⣳⣟⡷⣽⣼⣻⣽⠀⠀⠀⠀⠀⠀⠀⢀⣼⡯⡗⠋⠤⠀⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⣿⣿⣯⣽⣾⣿⣾⣗⡿⣯⡷⣯⣟⡷⣞⣼⣿⣀⠀⠀⠀⠀⢀⣠⡿⣏⡗⠈⠐⠈⠅⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⠛⠏⠉⠉⠽⢟⢿⣿⣿⣿⣿⣷⣻⢾⡽⣞⡷⠄⡹⣶⢿⣻⢿⣻⡽⢯⣼⢦⠶⠁⠈⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣯⠇⠀⠀⠀⠀⠀⠁⣽⣿⣿⣿⣷⣯⣿⣽⣛⡦⠀⠀⢩⣿⣹⢯⣷⢻⣟⠺⢣⡖⣘⠤⠓⠀⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢈⣿⡃⠁⠀⠀⠀⢀⣤⣾⣟⢿⣻⣿⣿⣟⡾⣽⡳⠄⠎⢳⣯⢯⣟⡾⢯⣞⣯⣓⠉⢀⠀⠀⡄⢢⡀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣷⣷⣶⣳⣶⣺⣿⣿⣳⢯⣟⣿⣿⣳⢯⠛⠅⠃⠀⠀⣴⣿⡿⣬⢶⠾⠙⣊⣥⠾⡒⠊⢁⢠⠣⣌⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢈⣿⡃⠁⠀⠀⠀⢀⣤⣾⣟⢿⣻���⣿⣟⡾⣽⡳⠄⠎⢳⣯⢯⣟⡾⢯⣞⣯⣓⠉⢀⠀⠀⡄⢢⡀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣷⣷⣶⣳⣶⣺⣿⣿⣳⢯⣟⣿⣿⣳⢯⠛⠅⠃⠀⠀⣴⣿⡿⣬⢶⠾⠙⣊⣥���⡒⠊⢁⢠⠣⣌⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢺⡽⣾⡽⣯⣟⣿⡿⣯⣿⣿⣾⢿⣿⠳⢏⣈⢠⠀⠀⣰⢿⡿⣽⣉⡶⠌⠋⠉⣀⡀⠁⠀⠀⠀⣘⡐⣂⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣽⣳⣟⣳⣟⣾⣽⣿⣿⣿⣿⣿⣦⣜⡻⡽⠆⠧⣴⡟⣯⢟⡳⣭⠲⠄⠐⠀⠀⠀⠈⠁⠉⠑⢊⡕⢃⠄⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⣿⣾⣿⣯⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⣾��⠀⠹⠾⡵⡞⡽⢢⣃⠐⠀⠀⠄⡐⠀⠀⠀⡘⢦⠘⣌⠀⠀
                                           ⠀�����⠀⠀⠀⠀⠀⠀⠀⠀⠐⠹⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢯⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠒⡈⠀⡀⠄⡑⠢⣉⠴⣈⣆
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢯⣏⡴⣶⣵⣢⢤⢠⡀⡄⢠⠐⡰⢌⡱⠀⡁⡀⠆⡥⠆⡥⣛⡽⣾
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠔⠉⠀⠀⢽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣼⣻⢷⣯⡽⣞⣷⣻⡼⣡⢋⡔⠣⠜⡐⢐⠠⡓⣤⣙⣲⣽⣻⢷
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠔⠉⠀⠀⢽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣼⣻⢷⣯⡽⣞⣷⣻⡼⣡⢋⡔⠣⠜⡐⢐⠠⡓⣤⣙⣲⣽���⢷
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡿⣽⣞⣷⣻⡴⣣⢜⡱⣊⡕⣊⠠⡙⡰⣭⢷⣯⣿⢿
                                                         
 
@@ -1239,6 +1408,10 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
               <span><strong>Drag canvas</strong> to pan around</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span><strong>Press R + Drag</strong> to create a frame</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
@@ -1382,8 +1555,12 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
                     </svg>
 
                     {nodes.map((node) => {
-                      const data = node.data as CyberNodeData
                       const pos = nodePositions.get(node.id)!
+                      if (node.type === "frame") {
+                        const frame = node.data as FrameNodeData
+                        return <div key={node.id} className="absolute rounded border border-primary/50 bg-primary/10" style={{ left: `${pos.left}%`, top: `${pos.top}%`, width: `${Math.max(8, (frame.frameWidth / rangeX) * 100)}%`, height: `${Math.max(8, (frame.frameHeight / rangeY) * 100)}%`, transform: "translate(-5%, -5%)" }} />
+                      }
+                      const data = node.data as CyberNodeData
 
                       const statusColorMap: Record<NodeStatus, string> = {
                         "default": "var(--node-default)",
@@ -1485,6 +1662,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
           x={contextMenu.x}
           y={contextMenu.y}
           nodeId={contextMenu.nodeId}
+          nodeType={contextMenu.nodeType}
           edgeId={contextMenu.edgeId}
           onClose={() => setContextMenu(null)}
           onAddNode={handleAddNode}
@@ -1496,10 +1674,11 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
         />
       )}
 
+
       {/* Detail Panel */}
-      {selectedNode && (
+      {selectedNode && selectedNode.type !== "frame" && (
         <DetailPanel
-          node={selectedNode}
+          node={selectedNode as Node<CyberNodeData>}
           onClose={() => setSelectedNode(null)}
           onUpdateNode={handleUpdateNode}
           onDeleteNode={handleDeleteNode}

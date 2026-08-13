@@ -70,6 +70,8 @@ function getSmoothStepPoints(
 }
 
 interface CrossingEdgeProps extends EdgeProps {
+  sourceHandle?: string | null
+  targetHandle?: string | null
   data?: {
     useSmoothStep?: boolean
   }
@@ -83,12 +85,15 @@ function CrossingEdgeComponent({
   targetY,
   sourcePosition,
   targetPosition,
+  sourceHandle,
+  targetHandle,
   style,
   markerEnd,
   data,
 }: CrossingEdgeProps) {
   const { getEdges, getNodes } = useReactFlow()
   const useSmoothStep = data?.useSmoothStep ?? false
+  const isParentChild = sourceHandle === "bottom-source" && targetHandle === "top-target"
 
   const [edgePath] = useSmoothStep
     ? getSmoothStepPath({
@@ -174,13 +179,21 @@ function CrossingEdgeComponent({
 
   return (
     <>
+      {isParentChild && (
+        <BaseEdge
+          path={edgePath}
+          markerEnd={markerEnd}
+          style={{
+            ...style,
+            opacity: 0.55,
+            filter: "blur(3px) drop-shadow(0 0 3px color-mix(in oklab, var(--primary) 55%, transparent))",
+          }}
+        />
+      )}
       <BaseEdge
         path={edgePath}
         markerEnd={markerEnd}
-        style={{
-          ...style,
-          filter: "drop-shadow(0 0 2px var(--primary)) drop-shadow(0 0 4px color-mix(in oklab, var(--primary) 45%, transparent))",
-        }}
+        style={style}
       />
       <EdgeLabelRenderer>
         {crossingPoints.map((point, index) => (

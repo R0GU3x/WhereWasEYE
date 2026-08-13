@@ -8,6 +8,7 @@ interface ContextMenuProps {
   x: number
   y: number
   nodeId?: string
+  nodeType?: string
   edgeId?: string
   onClose: () => void
   onAddNode: (parentId?: string) => void
@@ -22,6 +23,7 @@ export function ContextMenu({
   x,
   y,
   nodeId,
+  nodeType,
   edgeId,
   onClose,
   onAddNode,
@@ -104,6 +106,22 @@ export function ContextMenu({
           icon: "×",
           iconClass: "text-destructive",
           action: () => onDeleteEdge?.(edgeId),
+          className: "text-destructive hover:bg-destructive/10",
+        },
+      ]
+    : nodeId && nodeType === "frame"
+    ? [
+        {
+          label: "Add Child Node",
+          icon: "+",
+          action: () => onAddNode(nodeId),
+        },
+        { type: "separator" as const },
+        {
+          label: "Delete",
+          icon: "×",
+          iconClass: "text-destructive",
+          action: () => onDeleteNode(nodeId),
           className: "text-destructive hover:bg-destructive/10",
         },
       ]

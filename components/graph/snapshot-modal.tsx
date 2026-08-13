@@ -6,7 +6,7 @@ import type { Node, Edge } from "@xyflow/react"
 import type { CyberNodeData, NodeStatus } from "./cyber-node"
 
 interface SnapshotModalProps {
-  nodes: Node<CyberNodeData>[]
+  nodes: Node<any>[]
   edges: Edge[]
   selectedNodeIds?: Set<string>
   onClose: () => void

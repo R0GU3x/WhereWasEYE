@@ -173,10 +173,6 @@ export function GraphCanvas() {
       const node = nodes.find((candidate) => candidate.id === id)
       if (node) frameResizeBaseRef.current[id] = { ...node.position }
     }
-    const handleFrameGeometry = (event: Event) => {
-      const { id } = (event as CustomEvent<{ id: string }>).detail ?? {}
-      if (id) reactFlowInstance?.updateNodeInternals(id)
-    }
     const handleFrameResize = (event: Event) => {
       const detail = (event as CustomEvent<{ id: string; dx?: number; dy?: number; width: number; height: number }>).detail
       if (!detail?.id || !Number.isFinite(detail.width) || !Number.isFinite(detail.height)) return
@@ -193,11 +189,9 @@ export function GraphCanvas() {
         return changed ? next : current
       })
     }
-    window.addEventListener("wherewaseye:frame-geometry", handleFrameGeometry)
     window.addEventListener("wherewaseye:frame-resize-start", handleFrameResizeStart)
     window.addEventListener("wherewaseye:frame-resize", handleFrameResize)
     return () => {
-      window.removeEventListener("wherewaseye:frame-geometry", handleFrameGeometry)
       window.removeEventListener("wherewaseye:frame-resize-start", handleFrameResizeStart)
       window.removeEventListener("wherewaseye:frame-resize", handleFrameResize)
     }

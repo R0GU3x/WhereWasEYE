@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useCallback, useEffect, useRef } from "react"
+import { memo, useCallback, useRef } from "react"
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react"
 import { cn } from "@/lib/utils"
 
@@ -17,13 +17,6 @@ function FrameNodeComponent({ data, selected, id }: NodeProps) {
   const frame = data as unknown as FrameNodeData
   const { getZoom } = useReactFlow()
   const resizeRef = useRef<{ direction: ResizeDirection; startX: number; startY: number; x: number; y: number; width: number; height: number } | null>(null)
-
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      window.dispatchEvent(new CustomEvent("wherewaseye:frame-geometry", { detail: { id } }))
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [frame.frameHeight, frame.frameWidth, id])
 
   const finishResize = useCallback(() => {
     if (!resizeRef.current) return

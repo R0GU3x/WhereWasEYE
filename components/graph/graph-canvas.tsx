@@ -632,10 +632,10 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
     if (anchorChange?.position && anchorNode && reactFlowInstance) {
       const anchorWidth = anchorNode.measured?.width ?? anchorNode.width ?? 0
       const anchorHeight = anchorNode.measured?.height ?? anchorNode.height ?? 0
-      const anchorCenter = {
-        x: anchorChange.position.x + anchorWidth / 2,
-        y: anchorChange.position.y + anchorHeight / 2,
-      }
+      const anchorX = anchorChange.position.x
+      const anchorY = anchorChange.position.y
+      const anchorXRefs = [anchorX, anchorX + anchorWidth / 2, anchorX + anchorWidth]
+      const anchorYRefs = [anchorY, anchorY + anchorHeight / 2, anchorY + anchorHeight]
       const others = nodes.filter((node) => !session.nodeIds.includes(node.id))
       let bestX: { delta: number; distance: number } | null = null
       let bestY: { delta: number; distance: number } | null = null
@@ -643,15 +643,26 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
       for (const other of others) {
         const width = other.measured?.width ?? other.width ?? anchorWidth
         const height = other.measured?.height ?? other.height ?? anchorHeight
-        const xDelta = other.position.x + width / 2 - anchorCenter.x
-        const yDelta = other.position.y + height / 2 - anchorCenter.y
-        if (Math.abs(xDelta) <= snapThreshold) {
-          guides.push({ axis: "vertical", coordinate: other.position.x + width / 2 })
-          if (!bestX || Math.abs(xDelta) < bestX.distance) bestX = { delta: xDelta, distance: Math.abs(xDelta) }
+        const otherXRefs = [other.position.x, other.position.x + width / 2, other.position.x + width]
+        const otherYRefs = [other.position.y, other.position.y + height / 2, other.position.y + height]
+
+        for (const target of otherXRefs) {
+          for (const source of anchorXRefs) {
+            const delta = target - source
+            if (Math.abs(delta) <= snapThreshold) {
+              guides.push({ axis: "vertical", coordinate: target })
+              if (!bestX || Math.abs(delta) < bestX.distance) bestX = { delta, distance: Math.abs(delta) }
+            }
+          }
         }
-        if (Math.abs(yDelta) <= snapThreshold) {
-          guides.push({ axis: "horizontal", coordinate: other.position.y + height / 2 })
-          if (!bestY || Math.abs(yDelta) < bestY.distance) bestY = { delta: yDelta, distance: Math.abs(yDelta) }
+        for (const target of otherYRefs) {
+          for (const source of anchorYRefs) {
+            const delta = target - source
+            if (Math.abs(delta) <= snapThreshold) {
+              guides.push({ axis: "horizontal", coordinate: target })
+              if (!bestY || Math.abs(delta) < bestY.distance) bestY = { delta, distance: Math.abs(delta) }
+            }
+          }
         }
       }
       snapDelta = { x: bestX?.delta ?? 0, y: bestY?.delta ?? 0 }
@@ -1243,7 +1254,7 @@ data: { useSmoothStep: useTidyEdges, routePoints: [] },
             <pre className="font-mono text-xs text-muted-foreground leading-none select-none">
               {`
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀
-                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⢰⠂⠀⠀⠀⠀⠀⠀⠀
+                                          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀���⠂⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀�����⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠉⣷⠀⠀⢸⡄⠀⠀⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀���⡄���⠀⠀⠀⣿⠀⠀⠈⣿⣦⣄⠀⠀⠀⠀⠀
                                           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡸⣞���⠀⠀⠀⣼⡿⠀⠀⠀⠀⠉⠉⠀⠀⠀⠀⠀

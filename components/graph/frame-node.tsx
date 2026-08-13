@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useCallback, useState } from "react"
+import { memo, useCallback, useLayoutEffect, useRef, useState } from "react"
 import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react"
 import { cn } from "@/lib/utils"
 
@@ -15,6 +15,15 @@ function FrameNodeComponent({ data, selected, id }: NodeProps) {
   const frame = data as unknown as FrameNodeData
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(frame.label)
+  const [labelWidth, setLabelWidth] = useState(44)
+  const labelMeasureRef = useRef<HTMLSpanElement>(null)
+
+  useLayoutEffect(() => {
+    if (!editing || !labelMeasureRef.current) return
+    const nextWidth = Math.max(8, Math.ceil(labelMeasureRef.current.getBoundingClientRect().width + 4))
+    setLabelWidth((current) => current === nextWidth ? current : nextWidth)
+  }, [draft, editing])
+
   const commitLabel = useCallback(() => {
     window.dispatchEvent(new CustomEvent("wherewaseye:frame-label", { detail: { id, label: draft } }))
     setEditing(false)
@@ -42,6 +51,7 @@ function FrameNodeComponent({ data, selected, id }: NodeProps) {
       <div className="pointer-events-none absolute left-4 top-3 z-10 flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full bg-slate-300 shadow-[0_0_8px_rgba(203,213,225,0.55)]" />
         {editing ? (
+          <>
           <input
             autoFocus
             value={draft}
@@ -56,9 +66,14 @@ function FrameNodeComponent({ data, selected, id }: NodeProps) {
               }
             }}
             onPointerDown={(event) => event.stopPropagation()}
-            className="pointer-events-auto w-32 rounded border border-slate-400/40 bg-background/90 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em] text-slate-300/90 outline-none focus:border-slate-300/70"
+            style={{ width: `${labelWidth}px` }}
+            className="pointer-events-auto border-0 border-b border-slate-300/60 bg-transparent px-0 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em] text-slate-300/90 outline-none focus:border-slate-300"
             aria-label="Frame label"
           />
+          <span ref={labelMeasureRef} aria-hidden="true" className="pointer-events-none absolute -z-10 whitespace-pre font-mono text-[10px] uppercase tracking-[0.24em] opacity-0">
+            {draft || " "}
+          </span>
+          </>
         ) : (
           <span
             onDoubleClick={(event) => {

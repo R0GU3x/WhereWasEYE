@@ -31,7 +31,7 @@ import { useSound } from "@/hooks/use-sound"
 import { toast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 
-const APP_VERSION = "v4.7.3"
+const APP_VERSION = "v4.7.4"
 
 type GraphNodeData = CyberNodeData | FrameNodeData
 

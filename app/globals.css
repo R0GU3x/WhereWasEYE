@@ -173,3 +173,25 @@ textarea,
   stroke: var(--background);
   stroke-width: 2;
 }
+
+.notes-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.notes-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.notes-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notes-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: var(--border);
+}
+
+.notes-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}

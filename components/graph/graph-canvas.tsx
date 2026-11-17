@@ -329,6 +329,12 @@ export function GraphCanvas() {
   }, [nodes, edges, useTidyEdges, activeWorkspaceId, workspacesLoaded])
 
   useEffect(() => {
+    const preventBrowserContextMenu = (event: MouseEvent) => event.preventDefault()
+    document.addEventListener("contextmenu", preventBrowserContextMenu)
+    return () => document.removeEventListener("contextmenu", preventBrowserContextMenu)
+  }, [])
+
+  useEffect(() => {
     if (!workspacesLoaded) return
     const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId)
     if (!activeWorkspace) return

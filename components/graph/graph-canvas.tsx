@@ -329,6 +329,12 @@ export function GraphCanvas() {
   }, [nodes, edges, useTidyEdges, activeWorkspaceId, workspacesLoaded])
 
   useEffect(() => {
+    const preventBrowserContextMenu = (event: MouseEvent) => event.preventDefault()
+    document.addEventListener("contextmenu", preventBrowserContextMenu)
+    return () => document.removeEventListener("contextmenu", preventBrowserContextMenu)
+  }, [])
+
+  useEffect(() => {
     if (!workspacesLoaded) return
     const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId)
     if (!activeWorkspace) return
@@ -1226,7 +1232,7 @@ export function GraphCanvas() {
 
   const importJsonFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith(".json") && file.type !== "application/json") {
-      toast({ title: "Unsupported file", description: "Please drop a JSON file.", variant: "destructive" })
+      toast({ title: "Unsupported file", description: "Please choose a JSON file.", variant: "destructive" })
       return
     }
 
@@ -1234,6 +1240,56 @@ export function GraphCanvas() {
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target?.result as string)
+
+        if (data?.format === "wherewaseye-workspaces" && data?.version === "1.0") {
+          if (!Array.isArray(data.workspaces) || data.workspaces.length === 0) {
+            throw new Error("The workspace export does not contain workspaces")
+          }
+
+          const importedWorkspaces = data.workspaces.map((workspace: unknown) => {
+            if (!workspace || typeof workspace !== "object") throw new Error("Invalid workspace")
+            const item = workspace as {
+              id?: unknown
+              name?: unknown
+              metadata?: { useTidyEdges?: unknown }
+              graph?: { nodes?: unknown; edges?: unknown }
+            }
+            if (typeof item.name !== "string" || !item.name.trim() || !Array.isArray(item.graph?.nodes) || !Array.isArray(item.graph?.edges)) {
+              throw new Error("Invalid workspace graph")
+            }
+            return {
+              sourceId: typeof item.id === "string" ? item.id : "",
+              workspace: normalizeWorkspace(
+                typeof item.id === "string" ? item.id : crypto.randomUUID(),
+                item.name.trim(),
+                {
+                  nodes: item.graph.nodes as GraphNode[],
+                  edges: item.graph.edges as Edge[],
+                  useTidyEdges: Boolean(item.metadata?.useTidyEdges),
+                },
+              ),
+            }
+          })
+
+          const usedIds = new Set(workspaces.map((workspace) => workspace.id))
+          const newWorkspaces = importedWorkspaces.map(({ sourceId, workspace }) => {
+            const id = sourceId && !usedIds.has(sourceId) ? sourceId : crypto.randomUUID()
+            usedIds.add(id)
+            return { ...workspace, id }
+          })
+          const firstImported = newWorkspaces[0]
+          setWorkspaces((current) => [
+            ...current.map((workspace) => workspace.id === activeWorkspaceId
+              ? { ...workspace, nodes, edges, useTidyEdges }
+              : workspace),
+            ...newWorkspaces,
+          ])
+          setActiveWorkspaceId(firstImported.id)
+          loadWorkspaceGraph(firstImported)
+          toast({ title: "Workspaces imported", description: `${newWorkspaces.length} workspace${newWorkspaces.length === 1 ? "" : "s"} added.` })
+          return
+        }
+
         if (!Array.isArray(data?.nodes) || !Array.isArray(data?.edges)) {
           throw new Error("Invalid graph structure")
         }
@@ -1263,12 +1319,12 @@ export function GraphCanvas() {
         if (data.useTidyEdges !== undefined) setUseTidyEdges(data.useTidyEdges)
         toast({ title: "Graph imported", description: `${updatedNodes.length} nodes loaded.` })
       } catch {
-        toast({ title: "Import failed", description: "The file is not a valid graph JSON file.", variant: "destructive" })
+        toast({ title: "Import failed", description: "The file is not a valid WhereWasEYE export.", variant: "destructive" })
       }
     }
     reader.onerror = () => toast({ title: "Import failed", description: "The file could not be read.", variant: "destructive" })
     reader.readAsText(file)
-  }, [setNodes, setEdges])
+  }, [activeWorkspaceId, edges, loadWorkspaceGraph, nodes, setNodes, setEdges, useTidyEdges, workspaces])
 
   // Import function
   const handleImport = useCallback(() => {
@@ -1500,19 +1556,20 @@ export function GraphCanvas() {
           selected: selectedNodes.has(node.id) || node.selected,
         }))}
         edges={edges.map((edge) => {
+          const isSelected = Boolean(edge.selected)
           const isOutgoing = selectedNode?.id === edge.source
           const isIncoming = selectedNode?.id === edge.target
           return {
             ...edge,
             style: {
               ...edge.style,
-              stroke: isOutgoing ? "var(--primary)" : isIncoming ? "var(--muted-foreground)" : "var(--border)",
-              strokeWidth: isOutgoing ? 3 : 2,
-              opacity: selectedNode && !isOutgoing && !isIncoming ? 0.35 : 1,
+              stroke: isSelected || isOutgoing ? "var(--selection-border)" : isIncoming ? "var(--muted-foreground)" : "var(--border)",
+              strokeWidth: isSelected || isOutgoing ? 3 : 2,
+              opacity: selectedNode && !isSelected && !isOutgoing && !isIncoming ? 0.35 : 1,
             },
             markerEnd: edge.markerEnd && typeof edge.markerEnd === "object" ? {
               ...edge.markerEnd,
-              color: isOutgoing ? "var(--primary)" : "var(--border)",
+              color: isSelected || isOutgoing ? "var(--selection-border)" : "var(--border)",
             } : edge.markerEnd,
           }
         })}
@@ -1540,7 +1597,7 @@ export function GraphCanvas() {
         zoomOnScroll={false}
         zoomOnPinch={true}
         zoomOnDoubleClick={false}
-        className="bg-background [&_.react-flow__nodesselection-rect]:!hidden [&_.react-flow__selection]:!hidden"
+        className="bg-background"
         proOptions={{ hideAttribution: true }}
       >
         <Background

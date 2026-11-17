@@ -165,7 +165,7 @@ export function WorkspacePanel({
       >
         <header className="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
-            <h2 className="font-mono text-sm font-semibold text-foreground">Workspaces</h2>
+            <h2 className="font-mono text-sm font-semibold text-foreground">Workspace</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">Separate graph environments</p>
           </div>
           <button

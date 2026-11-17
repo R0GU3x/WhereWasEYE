@@ -30,12 +30,52 @@ import { SnapshotModal } from "./snapshot-modal"
 import { useSound } from "@/hooks/use-sound"
 import { toast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
+import { WorkspacePanel, type WorkspaceItem } from "./workspace-panel"
 
 const APP_VERSION = "v4.7.4"
+const WORKSPACES_STORAGE_KEY = "wherewaseye-workspaces"
+const LEGACY_GRAPH_STORAGE_KEY = "cyber-graph-data"
+const DEFAULT_WORKSPACE_ID = "workspace-default"
 
 type GraphNodeData = CyberNodeData | FrameNodeData
 
 type GraphNode = Node<GraphNodeData>
+
+interface GraphWorkspace extends WorkspaceItem {
+  nodes: GraphNode[]
+  edges: Edge[]
+  useTidyEdges: boolean
+}
+
+function createDefaultWorkspace(): GraphWorkspace {
+  return { id: DEFAULT_WORKSPACE_ID, name: "Workspace 1", nodes: [], edges: [], useTidyEdges: false }
+}
+
+function normalizeWorkspace(id: string, name: string, data: { nodes?: GraphNode[]; edges?: Edge[]; useTidyEdges?: boolean }): GraphWorkspace {
+  const useTidyEdges = Boolean(data.useTidyEdges)
+  const nodes = Array.isArray(data.nodes) ? data.nodes.map((node): GraphNode => {
+    if (node.type === "frame") return node
+    const savedStatus = String((node.data as CyberNodeData).status)
+    const statusAliases: Record<string, NodeStatus> = {
+      "not-yet": "default",
+      running: "in-progress",
+      queued: "pending",
+      pwned: "success",
+      "false-positive": "failed",
+      exploitable: "failed",
+      "needs-review": "pending",
+    }
+    const validStatuses: NodeStatus[] = ["default", "in-progress", "pending", "success", "failed", "interesting"]
+    const status = statusAliases[savedStatus] ?? (validStatuses.includes(savedStatus as NodeStatus) ? savedStatus as NodeStatus : "default")
+    return { ...node, data: { ...(node.data as CyberNodeData), status } }
+  }) : []
+  const edges = Array.isArray(data.edges) ? data.edges.map((edge) => ({
+    ...edge,
+    type: useTidyEdges ? "smoothstep" : "crossing",
+    data: { ...edge.data, useSmoothStep: useTidyEdges },
+  })) : []
+  return { id, name, nodes, edges, useTidyEdges }
+}
 
 const nodeTypes = {
   cyber: CyberNode,
@@ -67,6 +107,9 @@ interface ContextMenuState {
 export function GraphCanvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState<GraphNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+  const [workspaces, setWorkspaces] = useState<GraphWorkspace[]>([createDefaultWorkspace()])
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState(DEFAULT_WORKSPACE_ID)
+  const [workspacesLoaded, setWorkspacesLoaded] = useState(false)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set())
@@ -113,47 +156,62 @@ export function GraphCanvas() {
   const nodeWidthRef = useRef(new Map<string, number>())
   const { soundEnabled, toggleSound, playSound } = useSound()
 
-  // Load from localStorage on mount
+  // Restore all workspaces, migrating the original single-graph save when needed.
   useEffect(() => {
-    const savedData = localStorage.getItem("cyber-graph-data")
-    if (savedData) {
-      try {
-        const { nodes: savedNodes, edges: savedEdges, useTidyEdges: savedTidyEdges } = JSON.parse(savedData)
+    let restoredWorkspaces: GraphWorkspace[] = []
+    let restoredActiveId = DEFAULT_WORKSPACE_ID
 
-        // Update nodes with correct status type (handle legacy data)
-        const updatedNodes = (savedNodes || []).map((node: GraphNode) => ({
-          ...node,
-          data: {
-            ...node.data,
-            status: String(node.data.status) === "not-yet" ? "default" :
-              String(node.data.status) === "running" ? "in-progress" :
-                String(node.data.status) === "queued" ? "pending" :
-                  String(node.data.status) === "pwned" ? "success" :
-                    String(node.data.status) === "false-positive" ? "failed" :
-                      String(node.data.status) === "exploitable" ? "failed" :
-                        String(node.data.status) === "needs-review" ? "pending" :
-                          node.data.status || "default"
+    try {
+      const savedWorkspaces = localStorage.getItem(WORKSPACES_STORAGE_KEY)
+      if (savedWorkspaces) {
+        const parsed = JSON.parse(savedWorkspaces)
+        if (Array.isArray(parsed?.workspaces)) {
+          const seenIds = new Set<string>()
+          restoredWorkspaces = parsed.workspaces
+            .filter((workspace: unknown): workspace is GraphWorkspace => {
+              if (!workspace || typeof workspace !== "object") return false
+              const candidate = workspace as GraphWorkspace
+              if (typeof candidate.id !== "string" || !candidate.id || seenIds.has(candidate.id)) return false
+              seenIds.add(candidate.id)
+              return true
+            })
+            .map((workspace: GraphWorkspace) => normalizeWorkspace(
+              workspace.id,
+              typeof workspace.name === "string" && workspace.name.trim() ? workspace.name.trim() : "Workspace",
+              workspace,
+            ))
+          if (restoredWorkspaces.length > 0) {
+            restoredActiveId = restoredWorkspaces.some((workspace) => workspace.id === parsed.activeWorkspaceId)
+              ? parsed.activeWorkspaceId
+              : restoredWorkspaces[0].id
           }
-        }))
-        restoredGraphRef.current = updatedNodes.length > 0
-        setNodes(updatedNodes)
-
-        // Update edges with proper type
-        const tidyMode = savedTidyEdges ?? false
-        const updatedEdges = (savedEdges || []).map((edge: Edge) => ({
-          ...edge,
-          type: tidyMode ? "smoothstep" : "crossing",
-          data: { useSmoothStep: tidyMode },
-        }))
-        setEdges(updatedEdges)
-
-        if (savedTidyEdges !== undefined) {
-          setUseTidyEdges(savedTidyEdges)
         }
-      } catch {
-        // Invalid data, start fresh
       }
+
+      if (restoredWorkspaces.length === 0) {
+        const legacyData = localStorage.getItem(LEGACY_GRAPH_STORAGE_KEY)
+        if (legacyData) {
+          const parsedLegacy = JSON.parse(legacyData)
+          restoredWorkspaces = [normalizeWorkspace(DEFAULT_WORKSPACE_ID, "Workspace 1", parsedLegacy)]
+        }
+      }
+    } catch {
+      restoredWorkspaces = []
     }
+
+    if (restoredWorkspaces.length === 0) restoredWorkspaces = [createDefaultWorkspace()]
+    const activeWorkspace = restoredWorkspaces.find((workspace) => workspace.id === restoredActiveId) ?? restoredWorkspaces[0]
+    restoredActiveId = activeWorkspace.id
+    restoredGraphRef.current = activeWorkspace.nodes.length > 0
+    setWorkspaces(restoredWorkspaces)
+    setActiveWorkspaceId(restoredActiveId)
+    setNodes(activeWorkspace.nodes)
+    setEdges(activeWorkspace.edges)
+    setUseTidyEdges(activeWorkspace.useTidyEdges)
+    historyRef.current = [{ nodes: structuredClone(activeWorkspace.nodes), edges: structuredClone(activeWorkspace.edges) }]
+    historyIndexRef.current = 0
+    historyReadyRef.current = true
+    setWorkspacesLoaded(true)
   }, [setNodes, setEdges])
 
   // Fit once after the browser page initializes and restored nodes are available.
@@ -259,12 +317,111 @@ export function GraphCanvas() {
     return () => window.removeEventListener("keydown", handleHistoryKey)
   }, [undo, redo])
 
-  // Auto-save to localStorage
   useEffect(() => {
-    if (nodes.length > 0 || edges.length > 0) {
-      localStorage.setItem("cyber-graph-data", JSON.stringify({ nodes, edges, useTidyEdges }))
+    if (!workspacesLoaded) return
+    setWorkspaces((current) => current.map((workspace) => {
+      if (workspace.id !== activeWorkspaceId) return workspace
+      if (workspace.nodes === nodes && workspace.edges === edges && workspace.useTidyEdges === useTidyEdges) return workspace
+      return { ...workspace, nodes, edges, useTidyEdges }
+    }))
+  }, [nodes, edges, useTidyEdges, activeWorkspaceId, workspacesLoaded])
+
+  useEffect(() => {
+    if (!workspacesLoaded) return
+    const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId)
+    if (!activeWorkspace) return
+    try {
+      localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify({ version: 1, activeWorkspaceId, workspaces }))
+      localStorage.setItem(LEGACY_GRAPH_STORAGE_KEY, JSON.stringify({ nodes, edges, useTidyEdges }))
+    } catch {
+      toast({ title: "Workspace save failed", description: "Browser storage is unavailable or full.", variant: "destructive" })
     }
-  }, [nodes, edges, useTidyEdges])
+  }, [workspaces, activeWorkspaceId, workspacesLoaded, nodes, edges, useTidyEdges])
+
+  const resetWorkspaceHistory = useCallback((nextNodes: GraphNode[], nextEdges: Edge[]) => {
+    restoringHistoryRef.current = true
+    historyRef.current = [{ nodes: structuredClone(nextNodes), edges: structuredClone(nextEdges) }]
+    historyIndexRef.current = 0
+    historyReadyRef.current = true
+    setHistoryVersion((value) => value + 1)
+    requestAnimationFrame(() => { restoringHistoryRef.current = false })
+  }, [])
+
+  const loadWorkspaceGraph = useCallback((workspace: GraphWorkspace) => {
+    restoredGraphRef.current = workspace.nodes.length > 0
+    initialFitViewComplete.current = false
+    setNodes(structuredClone(workspace.nodes))
+    setEdges(structuredClone(workspace.edges))
+    setUseTidyEdges(workspace.useTidyEdges)
+    setSelectedNode(null)
+    setSelectedNodes(new Set())
+    resetWorkspaceHistory(workspace.nodes, workspace.edges)
+  }, [resetWorkspaceHistory, setNodes, setEdges])
+
+  const handleSelectWorkspace = useCallback((workspaceId: string) => {
+    if (workspaceId === activeWorkspaceId) return
+    const nextWorkspace = workspaces.find((workspace) => workspace.id === workspaceId)
+    if (!nextWorkspace) return
+    const currentGraph = { nodes, edges, useTidyEdges }
+    setWorkspaces((current) => current.map((workspace) => workspace.id === activeWorkspaceId
+      ? { ...workspace, ...currentGraph }
+      : workspace))
+    setActiveWorkspaceId(workspaceId)
+    loadWorkspaceGraph(nextWorkspace)
+  }, [activeWorkspaceId, workspaces, nodes, edges, useTidyEdges, loadWorkspaceGraph])
+
+  const handleCreateWorkspace = useCallback((name: string) => {
+    const workspace: GraphWorkspace = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      nodes: [],
+      edges: [],
+      useTidyEdges: false,
+    }
+    setWorkspaces((current) => [
+      ...current.map((existing) => existing.id === activeWorkspaceId
+        ? { ...existing, nodes, edges, useTidyEdges }
+        : existing),
+      workspace,
+    ])
+    setActiveWorkspaceId(workspace.id)
+    loadWorkspaceGraph(workspace)
+  }, [activeWorkspaceId, nodes, edges, useTidyEdges, loadWorkspaceGraph])
+
+  const handleRenameWorkspace = useCallback((workspaceId: string, name: string) => {
+    const validName = name.trim()
+    if (!validName) return
+    setWorkspaces((current) => current.map((workspace) => workspace.id === workspaceId
+      ? { ...workspace, name: validName }
+      : workspace))
+  }, [])
+
+  const handleDeleteWorkspace = useCallback((workspaceId: string) => {
+    if (workspaces.length <= 1) return
+    const deletingActive = workspaceId === activeWorkspaceId
+    const workspaceIndex = workspaces.findIndex((workspace) => workspace.id === workspaceId)
+    const nextWorkspace = deletingActive
+      ? workspaces.filter((workspace) => workspace.id !== workspaceId)[Math.max(0, workspaceIndex - 1)]
+      : null
+    setWorkspaces((current) => current
+      .filter((workspace) => workspace.id !== workspaceId)
+      .map((workspace) => workspace.id === activeWorkspaceId
+        ? { ...workspace, nodes, edges, useTidyEdges }
+        : workspace))
+    if (nextWorkspace) {
+      setActiveWorkspaceId(nextWorkspace.id)
+      loadWorkspaceGraph(nextWorkspace)
+    }
+  }, [workspaces, activeWorkspaceId, nodes, edges, useTidyEdges, loadWorkspaceGraph])
+
+  const handleReorderWorkspaces = useCallback((orderedIds: string[]) => {
+    setWorkspaces((current) => {
+      const byId = new Map(current.map((workspace) => [workspace.id, workspace]))
+      const ordered = orderedIds.map((id) => byId.get(id)).filter((workspace): workspace is GraphWorkspace => Boolean(workspace))
+      const included = new Set(ordered.map((workspace) => workspace.id))
+      return [...ordered, ...current.filter((workspace) => !included.has(workspace.id))]
+    })
+  }, [])
 
   const onConnectStart = useCallback((_: unknown, params: { nodeId: string | null }) => {
     connectionStartNodeId.current = params.nodeId
@@ -1380,6 +1537,18 @@ export function GraphCanvas() {
           position="bottom-right"
         />
       </ReactFlow>
+
+      {workspacesLoaded && (
+        <WorkspacePanel
+          workspaces={workspaces}
+          activeWorkspaceId={activeWorkspaceId}
+          onSelect={handleSelectWorkspace}
+          onCreate={handleCreateWorkspace}
+          onRename={handleRenameWorkspace}
+          onDelete={handleDeleteWorkspace}
+          onReorder={handleReorderWorkspaces}
+        />
+      )}
 
       {/* Help Button */}
       <div ref={helpContainerRef} className="absolute bottom-4 left-4 z-10">

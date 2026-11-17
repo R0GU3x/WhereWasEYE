@@ -51,6 +51,9 @@
   --glow-green: oklch(0.6 0.2 145);
   --glow-red: oklch(0.55 0.2 25);
   --glow-blue: oklch(0.55 0.2 250);
+  --selection-background: color-mix(in oklch, var(--primary) 14%, var(--background));
+  --selection-foreground: var(--primary-foreground);
+  --selection-border: var(--primary);
 }
 
 .dark {
@@ -138,6 +141,18 @@
   }
 }
 
+::selection {
+  color: var(--selection-foreground);
+  background: var(--primary);
+}
+
+input::selection,
+textarea::selection,
+[contenteditable="true"]::selection {
+  color: var(--selection-foreground);
+  background: var(--primary);
+}
+
 /* Make all text unselectable except in input boxes */
 body {
   user-select: none;
@@ -156,15 +171,17 @@ textarea,
   -ms-user-select: text;
 }
 
-/* Hide ReactFlow's default selection box and selection layer */
+/* Keep React Flow selection overlays visible without replacing its interaction logic. */
 .react-flow__selection,
-.react-flow__nodesselection,
 .react-flow__nodesselection-rect,
 .react-flow__selection-rect {
-  display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
+  border: 1px solid var(--selection-border);
+  background: var(--selection-background);
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--selection-border);
+  stroke-width: 3;
 }
 
 /* Edge crossing indicator dots */

@@ -1556,19 +1556,20 @@ export function GraphCanvas() {
           selected: selectedNodes.has(node.id) || node.selected,
         }))}
         edges={edges.map((edge) => {
+          const isSelected = Boolean(edge.selected)
           const isOutgoing = selectedNode?.id === edge.source
           const isIncoming = selectedNode?.id === edge.target
           return {
             ...edge,
             style: {
               ...edge.style,
-              stroke: isOutgoing ? "var(--primary)" : isIncoming ? "var(--muted-foreground)" : "var(--border)",
-              strokeWidth: isOutgoing ? 3 : 2,
-              opacity: selectedNode && !isOutgoing && !isIncoming ? 0.35 : 1,
+              stroke: isSelected || isOutgoing ? "var(--selection-border)" : isIncoming ? "var(--muted-foreground)" : "var(--border)",
+              strokeWidth: isSelected || isOutgoing ? 3 : 2,
+              opacity: selectedNode && !isSelected && !isOutgoing && !isIncoming ? 0.35 : 1,
             },
             markerEnd: edge.markerEnd && typeof edge.markerEnd === "object" ? {
               ...edge.markerEnd,
-              color: isOutgoing ? "var(--primary)" : "var(--border)",
+              color: isSelected || isOutgoing ? "var(--selection-border)" : "var(--border)",
             } : edge.markerEnd,
           }
         })}
@@ -1596,7 +1597,7 @@ export function GraphCanvas() {
         zoomOnScroll={false}
         zoomOnPinch={true}
         zoomOnDoubleClick={false}
-        className="bg-background [&_.react-flow__nodesselection-rect]:!hidden [&_.react-flow__selection]:!hidden"
+        className="bg-background"
         proOptions={{ hideAttribution: true }}
       >
         <Background

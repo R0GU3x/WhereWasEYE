@@ -31,6 +31,7 @@ import { useSound } from "@/hooks/use-sound"
 import { toast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import { WorkspacePanel, type WorkspaceItem } from "./workspace-panel"
+import { WorkspaceExportDialog } from "./workspace-export-dialog"
 
 const APP_VERSION = "v4.7.4"
 const WORKSPACES_STORAGE_KEY = "wherewaseye-workspaces"
@@ -129,6 +130,7 @@ export function GraphCanvas() {
   const [clearCanvasModal, setClearCanvasModal] = useState(false)
   const [useTidyEdges, setUseTidyEdges] = useState(false)
   const [snapshotModal, setSnapshotModal] = useState(false)
+  const [workspaceExportOpen, setWorkspaceExportOpen] = useState(false)
   const [fileDragState, setFileDragState] = useState<"idle" | "valid" | "invalid">("idle")
   const fileDragDepth = useRef(0)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
@@ -1187,17 +1189,40 @@ export function GraphCanvas() {
     return () => document.removeEventListener("pointerdown", handleOutsidePointerDown)
   }, [showHelp])
 
-  // Export function
-  const handleExport = useCallback(() => {
-    const data = JSON.stringify({ nodes, edges, useTidyEdges }, null, 2)
-    const blob = new Blob([data], { type: "application/json" })
+  const handleWorkspaceExport = useCallback((scope: "current" | "selected" | "all", selectedIds: string[]) => {
+    const ids = scope === "current" ? [activeWorkspaceId] : scope === "all" ? workspaces.map((workspace) => workspace.id) : selectedIds
+    const exportedWorkspaces = workspaces
+      .filter((workspace) => ids.includes(workspace.id))
+      .map((workspace) => {
+        const currentGraph = workspace.id === activeWorkspaceId
+          ? { nodes, edges, useTidyEdges }
+          : workspace
+        return {
+          id: workspace.id,
+          name: workspace.name,
+          metadata: { useTidyEdges: currentGraph.useTidyEdges },
+          graph: { nodes: structuredClone(currentGraph.nodes), edges: structuredClone(currentGraph.edges) },
+        }
+      })
+    if (exportedWorkspaces.length === 0) return
+    const payload = {
+      format: "wherewaseye-workspaces",
+      version: "1.0",
+      exportedAt: new Date().toISOString(),
+      workspaces: exportedWorkspaces,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `cyber-map-${new Date().toISOString().split("T")[0]}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [nodes, edges, useTidyEdges])
+    const link = document.createElement("a")
+    const currentName = exportedWorkspaces[0].name.replace(/[^a-z0-9-_]+/gi, "_").replace(/^_+|_+$/g, "") || "Workspace"
+    link.href = url
+    link.download = scope === "current"
+      ? `WhereWasEYE_${currentName}.json`
+      : scope === "all" ? "WhereWasEYE_All_Workspaces.json" : "WhereWasEYE_Selected_Workspaces.json"
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    setWorkspaceExportOpen(false)
+  }, [activeWorkspaceId, workspaces, nodes, edges, useTidyEdges])
 
   const importJsonFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith(".json") && file.type !== "application/json") {
@@ -1820,7 +1845,7 @@ export function GraphCanvas() {
           Import
         </button>
         <button
-          onClick={handleExport}
+          onClick={() => setWorkspaceExportOpen(true)}
           className="rounded border border-primary/50 bg-primary/10 px-3 py-1.5 font-mono text-xs text-primary backdrop-blur-sm transition-colors hover:bg-primary/20"
         >
           Export
@@ -1946,6 +1971,14 @@ export function GraphCanvas() {
             </div>
           </div>
         </div>
+      )}
+
+      {workspaceExportOpen && (
+        <WorkspaceExportDialog
+          workspaces={workspaces}
+          onClose={() => setWorkspaceExportOpen(false)}
+          onExport={handleWorkspaceExport}
+        />
       )}
 
       {/* Snapshot Modal */}

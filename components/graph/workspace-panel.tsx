@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react"
-import { Check, ChevronDown, ChevronUp, FolderKanban, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react"
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
+import { Check, ChevronDown, FolderKanban, GripVertical, Plus, Trash2, X } from "lucide-react"
 
 export interface WorkspaceItem {
   id: string
@@ -37,8 +37,8 @@ export function WorkspacePanel({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOrder, setDragOrder] = useState<string[] | null>(null)
-  const [hoveredWorkspaceId, setHoveredWorkspaceId] = useState<string | null>(null)
   const panelZoneRef = useRef<HTMLDivElement>(null)
+  const cancelRenameRef = useRef<string | null>(null)
   const itemRefs = useRef(new Map<string, HTMLLIElement>())
   const previousPositions = useRef(new Map<string, number>())
 
@@ -88,21 +88,31 @@ export function WorkspacePanel({
     setIsCreating(false)
   }
 
-  function submitRename(event: FormEvent<HTMLFormElement>, id: string) {
-    event.preventDefault()
+  function commitRename(id: string) {
     const name = editingName.trim()
-    if (!name) return
-    onRename(id, name)
+    if (name) onRename(id, name)
     setEditingId(null)
   }
 
-  function moveWorkspace(id: string, direction: -1 | 1) {
-    const index = workspaces.findIndex((workspace) => workspace.id === id)
-    const targetIndex = index + direction
-    if (index < 0 || targetIndex < 0 || targetIndex >= workspaces.length) return
-    const reordered = [...workspaces]
-    ;[reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]]
-    onReorder(reordered.map((workspace) => workspace.id))
+  function handleRenameKeyDown(event: KeyboardEvent<HTMLInputElement>, id: string) {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
+    if (event.key === "Enter") {
+      event.preventDefault()
+      cancelRenameRef.current = id
+      commitRename(id)
+    } else if (event.key === "Escape") {
+      event.preventDefault()
+      cancelRenameRef.current = id
+      setEditingId(null)
+    }
+  }
+
+  function scrollWorkspaceName(event: React.MouseEvent<HTMLButtonElement>, reset = false) {
+    const button = event.currentTarget
+    const label = button.querySelector<HTMLElement>("[data-workspace-name]")
+    if (!label) return
+    const overflow = label.scrollWidth - button.clientWidth
+    label.style.transform = reset || overflow <= 0 ? "translateX(0)" : `translateX(-${overflow}px)`
   }
 
   function moveDraggedWorkspace(targetId: string) {
@@ -128,7 +138,12 @@ export function WorkspacePanel({
   }
 
   return (
-    <div ref={panelZoneRef} className="absolute left-4 top-4 z-30 w-[min(19rem,calc(100vw-2rem))]">
+    <div
+      ref={panelZoneRef}
+      onWheel={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      className="absolute left-4 top-4 z-30 w-[min(19rem,calc(100vw-2rem))]"
+    >
       <button
         type="button"
         aria-expanded={isOpen}
@@ -184,16 +199,10 @@ export function WorkspacePanel({
           </form>
         )}
 
-        <ul className="max-h-[min(55vh,24rem)] overflow-y-auto p-2">
-          {visibleWorkspaces.map((workspace, index) => (
+        <ul className="workspace-scrollbar max-h-[min(55vh,24rem)] overscroll-y-contain overflow-y-auto p-2">
+          {visibleWorkspaces.map((workspace) => (
             <li
               key={workspace.id}
-              onMouseEnter={() => setHoveredWorkspaceId(workspace.id)}
-              onMouseLeave={() => setHoveredWorkspaceId(null)}
-              onFocusCapture={() => setHoveredWorkspaceId(workspace.id)}
-              onBlurCapture={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHoveredWorkspaceId(null)
-              }}
               ref={(element) => {
                 if (element) itemRefs.current.set(workspace.id, element)
                 else itemRefs.current.delete(workspace.id)
@@ -216,47 +225,40 @@ export function WorkspacePanel({
                   <GripVertical className="size-4" />
                 </span>
                 {editingId === workspace.id ? (
-                  <form onSubmit={(event) => submitRename(event, workspace.id)} className="flex min-w-0 flex-1 items-center gap-1">
+                  <form onSubmit={(event) => { event.preventDefault(); commitRename(workspace.id) }} className="flex min-w-0 flex-1">
                     <label className="sr-only" htmlFor={`rename-workspace-${workspace.id}`}>Rename {workspace.name}</label>
                     <input
                       autoFocus
                       id={`rename-workspace-${workspace.id}`}
                       value={editingName}
                       onChange={(event) => setEditingName(event.target.value)}
+                      onBlur={() => {
+                        if (cancelRenameRef.current === workspace.id) cancelRenameRef.current = null
+                        else commitRename(workspace.id)
+                      }}
+                      onKeyDown={(event) => handleRenameKeyDown(event, workspace.id)}
                       maxLength={50}
-                      className="min-w-0 flex-1 rounded border border-primary bg-input px-2 py-1.5 font-mono text-xs text-foreground outline-none"
+                      className="min-w-0 w-full rounded border border-primary bg-input px-2 py-1.5 font-mono text-xs text-foreground outline-none"
                     />
-                    <button type="submit" disabled={!editingName.trim()} className={iconButtonClass} aria-label="Save workspace name">
-                      <Check className="size-4" aria-hidden="true" />
-                    </button>
-                    <button type="button" onClick={() => setEditingId(null)} className={iconButtonClass} aria-label="Cancel rename">
-                      <X className="size-4" aria-hidden="true" />
-                    </button>
                   </form>
                 ) : (
                   <button
                     type="button"
                     onClick={() => onSelect(workspace.id)}
-                    className="min-w-0 flex-1 truncate py-2 text-left font-mono text-xs text-foreground"
+                    onDoubleClick={() => { setEditingId(workspace.id); setEditingName(workspace.name); setConfirmDeleteId(null) }}
+                    onMouseEnter={(event) => scrollWorkspaceName(event)}
+                    onMouseLeave={(event) => scrollWorkspaceName(event, true)}
+                    className="min-w-0 flex-1 overflow-hidden py-2 text-left font-mono text-xs text-foreground"
                     aria-pressed={workspace.id === activeWorkspaceId}
+                    aria-label={`${workspace.name}; double-click to rename`}
                   >
-                    {workspace.name}
+                    <span data-workspace-name className="inline-block whitespace-nowrap transition-transform duration-[1800ms] ease-in-out">
+                      {workspace.name}
+                    </span>
                   </button>
                 )}
-                <span role="tooltip" className={`pointer-events-none absolute left-10 top-full z-50 mt-1 max-w-[min(18rem,calc(100vw-4rem))] break-words whitespace-normal rounded-md border border-primary/30 bg-popover px-2.5 py-1.5 font-mono text-[11px] text-popover-foreground shadow-lg transition-all duration-150 ${hoveredWorkspaceId === workspace.id ? "translate-y-0.5 opacity-100" : "translate-y-0 opacity-0"}`}>
-                  {workspace.name}
-                </span>
                 {editingId !== workspace.id && (
                   <>
-                    <button type="button" className={iconButtonClass} disabled={index === 0} onClick={() => moveWorkspace(workspace.id, -1)} aria-label={`Move ${workspace.name} up`}>
-                      <ChevronUp className="size-4" aria-hidden="true" />
-                    </button>
-                    <button type="button" className={iconButtonClass} disabled={index === workspaces.length - 1} onClick={() => moveWorkspace(workspace.id, 1)} aria-label={`Move ${workspace.name} down`}>
-                      <ChevronDown className="size-4" aria-hidden="true" />
-                    </button>
-                    <button type="button" className={iconButtonClass} onClick={() => { setEditingId(workspace.id); setEditingName(workspace.name); setConfirmDeleteId(null) }} aria-label={`Rename ${workspace.name}`}>
-                      <Pencil className="size-3.5" aria-hidden="true" />
-                    </button>
                     {workspaces.length > 1 && (
                       <button type="button" className={`${iconButtonClass} hover:bg-destructive/10 hover:text-destructive`} onClick={() => setConfirmDeleteId(confirmDeleteId === workspace.id ? null : workspace.id)} aria-label={`Delete ${workspace.name}`}>
                         <Trash2 className="size-3.5" aria-hidden="true" />

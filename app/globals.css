@@ -176,7 +176,7 @@ textarea,
 
 .notes-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-color: color-mix(in oklch, var(--primary) 55%, var(--border)) var(--input);
 }
 
 .notes-scrollbar::-webkit-scrollbar {
@@ -184,14 +184,16 @@ textarea,
 }
 
 .notes-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+  border-radius: 9999px;
+  background: var(--input);
 }
 
 .notes-scrollbar::-webkit-scrollbar-thumb {
+  border: 1px solid var(--input);
   border-radius: 9999px;
-  background: var(--border);
+  background: color-mix(in oklch, var(--primary) 55%, var(--border));
 }
 
 .notes-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
+  background: var(--primary);
 }

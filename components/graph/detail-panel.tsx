@@ -113,7 +113,8 @@ export function DetailPanel({ node, onClose, onUpdateNode, onDeleteNode }: Detai
             onChange={(e) => onUpdateNode(node.id, { notes: e.target.value })}
             placeholder="Add notes about this step..."
             rows={5}
-            className="w-full resize-none rounded border border-border bg-input px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            onWheel={(event) => event.stopPropagation()}
+            className="notes-scrollbar w-full resize-none overflow-y-auto rounded border border-border bg-input px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Download, X } from "lucide-react"
+import { Download, Layers3, PanelsTopLeft, Boxes, X } from "lucide-react"
 import type { WorkspaceItem } from "./workspace-panel"
 
 interface WorkspaceExportDialogProps {
@@ -26,16 +26,20 @@ export function WorkspaceExportDialog({ workspaces, onClose, onExport }: Workspa
           </div>
           <button type="button" onClick={onClose} aria-label="Close export dialog" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>
         </header>
-        <fieldset className="flex flex-col gap-2">
+        <fieldset className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
           <legend className="sr-only">Workspace export scope</legend>
           {([
-            ["current", "Export current workspace"],
-            ["selected", "Export selected workspaces"],
-            ["all", "Export all workspaces"],
-          ] as const).map(([value, label]) => (
-            <label key={value} className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-xs transition-colors ${scope === value ? "border-primary/50 bg-primary/10" : "border-border hover:bg-muted/50"}`}>
-              <input type="radio" name="workspace-export-scope" value={value} checked={scope === value} onChange={() => setScope(value)} className="accent-primary" />
-              <span>{label}</span>
+            { value: "current", title: "Export Current", detail: "This workspace", Icon: PanelsTopLeft },
+            { value: "selected", title: "Export Multiple", detail: "Choose workspaces", Icon: Layers3 },
+            { value: "all", title: "Export All", detail: "Every workspace", Icon: Boxes },
+          ] as const).map(({ value, title, detail, Icon }) => (
+            <label key={value} className={`group relative flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border p-3 text-center transition-all duration-200 focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-card active:scale-[0.98] ${scope === value ? "border-primary/60 bg-primary/10 shadow-sm shadow-primary/10" : "border-border bg-muted/20 hover:border-primary/40 hover:bg-muted/60"}`}>
+              <input type="radio" name="workspace-export-scope" value={value} checked={scope === value} onChange={() => setScope(value)} className="sr-only" />
+              <Icon aria-hidden="true" className={`size-10 shrink-0 transition-transform duration-200 group-hover:scale-105 ${scope === value ? "text-primary" : "text-muted-foreground"}`} strokeWidth={1.7} />
+              <span className="min-w-0">
+                <span className="block text-[11px] font-semibold leading-tight">{title}</span>
+                <span className="mt-1 block text-[10px] leading-tight text-muted-foreground">{detail}</span>
+              </span>
             </label>
           ))}
         </fieldset>

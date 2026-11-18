@@ -1,0 +1,31 @@
+{
+  "name": "WhereWasEYE Arena",
+  "short_name": "WhereWasEYE",
+  "description": "Interactive cybersecurity attack graph visualizer and workspace manager.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0b1018",
+  "background_color": "#0b1018",
+  "icons": [
+    {
+      "src": "/wwe-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/wwe-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/wwe-512x512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b1018">
+    <title>Offline · WhereWasEYE Arena</title>
+    <style>
+      :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; background: #0b1018; color: #edf7fa; }
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; }
+      main { width: min(100%, 430px); text-align: center; }
+      img { width: 76px; height: 76px; object-fit: contain; margin-bottom: 22px; }
+      h1 { margin: 0; font-size: 1.4rem; letter-spacing: -.03em; }
+      p { margin: 12px 0 0; color: #9aa8b6; line-height: 1.65; font-size: .95rem; }
+      button { margin-top: 24px; min-height: 44px; border: 0; border-radius: 8px; padding: 0 18px; background: #65e9e4; color: #061314; font: inherit; font-weight: 650; cursor: pointer; }
+      button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/wwe-128x128.png" alt="WhereWasEYE logo">
+      <h1>You’re offline</h1>
+      <p>WhereWasEYE couldn’t reach the network. Your saved workspaces remain in this browser. Reconnect and reload to open the graph editor.</p>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

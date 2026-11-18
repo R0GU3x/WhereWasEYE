@@ -7,28 +7,28 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'WhereWasEye Arena',
-  description: 'Know where you were',
+  applicationName: 'WhereWasEYE Arena',
+  title: 'WhereWasEYE Arena',
+  description: 'Interactive cybersecurity attack graph visualizer and workspace manager.',
   generator: 'v0.app',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'WhereWasEYE',
+    statusBarStyle: 'black-translucent',
+  },
   icons: {
     icon: [
-      {
-        url: '/wwe-128x128.png',
-        sizes: '128x128',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/wwe-128x128.png',
-        sizes: '128x128',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/wwe-original.png',
-        type: 'image/png',
-      },
+      { url: '/wwe-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/wwe-512x512.png', sizes: '512x512', type: 'image/png' },
     ],
-    apple: '/wwe-original.png',
+    apple: [{ url: '/apple-icon.png', sizes: '180x180', type: 'image/png' }],
   },
+}
+
+export const viewport = {
+  themeColor: '#0b1018',
+  viewportFit: 'cover' as const,
 }
 
 export default function RootLayout({
